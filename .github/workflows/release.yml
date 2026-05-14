@@ -2,12 +2,18 @@ name: release
 
 # Cuts a new release of the bidnamic-os launcher on every push to main
 # that touches launcher/**. The release tag is calendar-versioned
-# (vYYYY.MM.DD-shortsha). After tagging, the workflow rewrites
-# Formula/bidnamic-os.rb with the new url/sha256/version and pushes the
-# updated formula back to main.
+# (vYYYY.MM.DD-shortsha). After tagging, the workflow opens a PR with
+# the formula's url/sha256/version updated to match the new release,
+# and enables auto-merge so the PR lands without human action.
 #
-# The paths filter is what prevents an infinite loop: the formula-update
-# commit only touches Formula/, which doesn't match launcher/**.
+# We use a PR rather than pushing the formula update directly to main
+# because main's branch ruleset requires changes to go through a PR.
+# GITHUB_TOKEN can't bypass the rule, but it CAN open + auto-merge a
+# PR (auto-merge waits for required checks then performs the merge as
+# a privileged action that respects the rule).
+#
+# The paths filter is what prevents an infinite loop: the auto-merged
+# formula PR only touches Formula/, which doesn't match launcher/**.
 
 on:
   push:
@@ -17,6 +23,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   release:
@@ -52,7 +59,7 @@ jobs:
             --title "$TAG" \
             --generate-notes
 
-      - name: Update formula
+      - name: Open formula-bump PR with auto-merge
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -73,6 +80,9 @@ jobs:
 
           SHA=$(shasum -a 256 /tmp/src.tgz | awk '{print $1}')
 
+          BRANCH="release/${TAG}"
+          git checkout -b "$BRANCH"
+
           sed -i \
             -e "s|^  url .*|  url \"${URL}\"|" \
             -e "s|^  sha256 .*|  sha256 \"${SHA}\"|" \
@@ -83,4 +93,13 @@ jobs:
           git config user.email "noreply@bidnamic.com"
           git add Formula/bidnamic-os.rb
           git commit -m "bidnamic-os ${TAG}"
-          git push
+          git push -u origin "$BRANCH"
+
+          PR_URL=$(gh pr create \
+            --base main \
+            --head "$BRANCH" \
+            --title "bidnamic-os ${TAG}" \
+            --body "Automated formula bump for release ${TAG}.")
+
+          # --rebase matches the ruleset's allowed_merge_methods.
+          gh pr merge "$PR_URL" --rebase --auto
