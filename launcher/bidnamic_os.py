@@ -973,6 +973,52 @@ def cmd_version():
     print(__version__)
 
 
+def _check_post_install_environment():
+    """Fail-fast environment checks before doing privileged work.
+
+    These mirror the upfront checks the previous install.sh ran, so users
+    on an unsupported macOS / arch / dev-tools / Tailscale config get a
+    clear error before being prompted for sudo.
+    """
+    if platform.system() != "Darwin":
+        error("post-install only supports macOS.")
+        return False
+    if platform.machine() != "arm64":
+        error("Apple Silicon (arm64) required — this installer assumes the /opt/homebrew prefix.")
+        return False
+
+    mac_ver = get_macos_version()
+    if mac_ver is None:
+        error("Could not determine macOS version.")
+        return False
+    if mac_ver[0] < 26:
+        error(f"macOS Tahoe (26.x) or later required (found {mac_ver[0]}.{mac_ver[1]}).")
+        return False
+
+    dev_major = get_developer_tools_major_version()
+    if dev_major is None:
+        error("Command Line Tools not found. Install with: xcode-select --install")
+        return False
+    if dev_major < mac_ver[0]:
+        error(
+            f"Command Line Tools {dev_major}.x is too old for macOS {mac_ver[0]}.x. "
+            "Reinstall with:\n"
+            "    sudo rm -rf /Library/Developer/CommandLineTools\n"
+            "    sudo xcode-select --install"
+        )
+        return False
+
+    if not Path("/Applications/Tailscale.app").is_dir():
+        error(
+            "Tailscale Mac app not found. Install from "
+            "https://tailscale.com/download/mac (App Store edition), sign in, "
+            "then re-run post-install."
+        )
+        return False
+
+    return True
+
+
 def cmd_post_install():
     """Run the one-time privileged setup after `brew install bidnamic-os`.
 
@@ -981,8 +1027,7 @@ def cmd_post_install():
     of which `brew install` can do unprivileged. Idempotent: re-running is
     safe and re-asserts the desired state.
     """
-    if platform.system() != "Darwin":
-        error("post-install only supports macOS.")
+    if not _check_post_install_environment():
         return 1
 
     info("You'll be prompted for your macOS password.")
