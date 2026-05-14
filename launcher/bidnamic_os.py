@@ -38,10 +38,6 @@ SSO_START_URL = "https://d-936796524a.awsapps.com/start"
 # hardcoding per-environment IDs. Keep in sync with Terraform.
 EFS_CREATION_TOKEN = "bidnamic-os"
 LOCAL_MOUNT_PATH = Path.home() / "bidnamic-os"
-# Pre-2026-05 mount location. `bidnamic-os unmount` cleans this up too so
-# upgraders don't have to `sudo umount` it themselves. Drop once everyone has
-# rotated.
-LEGACY_MOUNT_PATH = Path.home() / "Desktop" / "bidnamic-os"
 
 # SHARE_DIR is rewritten by the Homebrew formula at install time to point at
 # HOMEBREW_PREFIX/share/bidnamic-os. Source-tree invocations point at the
@@ -881,12 +877,11 @@ def disable_spotlight_indexing(path):
 
 
 def unmount_efs():
-    """Unmount the current and any legacy EFS mounts. Best-effort."""
+    """Unmount the EFS share. Best-effort."""
     if platform.system() != "Darwin":
         return
-    for path in (LOCAL_MOUNT_PATH, LEGACY_MOUNT_PATH):
-        if is_mounted(path):
-            _unmount_path(path)
+    if is_mounted(LOCAL_MOUNT_PATH):
+        _unmount_path(LOCAL_MOUNT_PATH)
 
 
 def _unmount_path(path):
@@ -946,7 +941,7 @@ def cmd_stop(session, profile, env):
 
 
 def cmd_unmount(session, profile, env):
-    if not is_mounted(LOCAL_MOUNT_PATH) and not is_mounted(LEGACY_MOUNT_PATH):
+    if not is_mounted(LOCAL_MOUNT_PATH):
         info("Nothing to unmount.")
         return
     unmount_efs()
