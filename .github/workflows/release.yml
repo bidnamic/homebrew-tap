@@ -1,0 +1,86 @@
+name: release
+
+# Cuts a new release of the bidnamic-os launcher on every push to main
+# that touches launcher/**. The release tag is calendar-versioned
+# (vYYYY.MM.DD-shortsha). After tagging, the workflow rewrites
+# Formula/bidnamic-os.rb with the new url/sha256/version and pushes the
+# updated formula back to main.
+#
+# The paths filter is what prevents an infinite loop: the formula-update
+# commit only touches Formula/, which doesn't match launcher/**.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "launcher/**"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve tag
+        id: tag
+        run: |
+          set -euo pipefail
+          TAG="v$(date -u +%Y.%m.%d)-$(git rev-parse --short HEAD)"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Tag and push
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.tag.outputs.tag }}"
+          git tag "$TAG"
+          git push origin "$TAG"
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.tag.outputs.tag }}"
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --generate-notes
+
+      - name: Update formula
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.tag.outputs.tag }}"
+          URL="https://github.com/${{ github.repository }}/archive/refs/tags/${TAG}.tar.gz"
+
+          # GitHub materialises the auto-archive a few seconds after the
+          # release is created. Poll until it's downloadable.
+          for attempt in 1 2 3 4 5 6; do
+            if curl -fsSL -o /tmp/src.tgz "$URL"; then
+              break
+            fi
+            echo "Source archive not yet available (attempt $attempt); waiting..."
+            sleep 5
+          done
+          test -s /tmp/src.tgz
+
+          SHA=$(shasum -a 256 /tmp/src.tgz | awk '{print $1}')
+
+          sed -i \
+            -e "s|^  url .*|  url \"${URL}\"|" \
+            -e "s|^  sha256 .*|  sha256 \"${SHA}\"|" \
+            -e "s|^  version .*|  version \"${TAG#v}\"|" \
+            Formula/bidnamic-os.rb
+
+          git config user.name "bidnamic-os-bot"
+          git config user.email "noreply@bidnamic.com"
+          git add Formula/bidnamic-os.rb
+          git commit -m "bidnamic-os ${TAG}"
+          git push

@@ -1,0 +1,519 @@
+<!-- AM-facing onboarding tutorial. Not a style reference for other docs. -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bidnamic OS — AM Tutorial</title>
+<style>
+  :root {
+    --bg: #fbfaf7;
+    --ink: #1a1a1a;
+    --muted: #5f5f5f;
+    --accent: #c8502b;
+    --rule: #e6e2d8;
+    --code-bg: #f1ede3;
+    --callout-bg: #fff6ec;
+    --callout-border: #e8c9a8;
+    --dialogue-bg: #f6f3ea;
+    --badge-bg: #ece8db;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink); }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 1.55;
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 48px 32px 96px;
+  }
+  header { border-bottom: 2px solid var(--ink); padding-bottom: 20px; margin-bottom: 32px; }
+  header .eyebrow { font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
+  header h1 { margin: 6px 0 4px; font-size: 34px; line-height: 1.15; }
+  header p.lede { margin: 8px 0 0; color: var(--muted); font-size: 17px; }
+  h2 {
+    font-size: 22px;
+    margin: 48px 0 12px;
+    border-top: 1px solid var(--rule);
+    padding-top: 28px;
+  }
+  h2 .num { color: var(--accent); font-variant-numeric: tabular-nums; margin-right: 10px; }
+  h3 { font-size: 17px; margin: 24px 0 6px; }
+  h4 { font-size: 14px; margin: 16px 0 4px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+  p { margin: 10px 0; }
+  ul, ol { padding-left: 22px; }
+  li { margin: 6px 0; }
+  a { color: var(--accent); }
+  em { color: #333; }
+  code {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 13.5px;
+    background: var(--code-bg);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+  pre {
+    position: relative;
+    background: var(--code-bg);
+    border-left: 3px solid var(--accent);
+    padding: 14px 16px;
+    padding-right: 70px;
+    overflow-x: auto;
+    border-radius: 3px;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    margin: 14px 0;
+  }
+  pre code { background: none; padding: 0; font-size: inherit; }
+  .copy-btn {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    font: 11px/1 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    padding: 4px 9px;
+    border: 1px solid var(--rule);
+    background: #fff;
+    color: var(--muted);
+    border-radius: 3px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.12s, color 0.12s, border-color 0.12s;
+  }
+  pre:hover .copy-btn, .copy-btn:focus { opacity: 1; }
+  .copy-btn:hover { color: var(--accent); border-color: var(--accent); }
+  .copy-btn.copied { color: var(--accent); border-color: var(--accent); opacity: 1; }
+  .toc { background: #fff; border: 1px solid var(--rule); padding: 16px 22px; border-radius: 4px; margin-bottom: 8px; }
+  .toc h3 { margin: 0 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+  .toc ol { margin: 0; padding-left: 20px; font-size: 14px; }
+  .toc ol li { margin: 2px 0; }
+  .toc a { text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+  .callout {
+    background: var(--callout-bg);
+    border-left: 3px solid var(--callout-border);
+    padding: 12px 16px;
+    margin: 16px 0;
+    font-size: 14.5px;
+    border-radius: 0 3px 3px 0;
+  }
+  .callout strong { color: var(--accent); }
+  table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 14.5px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 600; }
+  td code { font-size: 12.5px; }
+  .workflow { border: 1px solid var(--rule); background: #fff; padding: 18px 22px; border-radius: 4px; margin: 22px 0; }
+  .workflow h3 { margin-top: 0; display: flex; align-items: baseline; gap: 10px; }
+  .workflow h3 .badge {
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    background: var(--badge-bg);
+    color: var(--muted);
+    padding: 2px 8px;
+    border-radius: 10px;
+    text-transform: none;
+  }
+  .workflow .shortcut { font-size: 13px; color: var(--muted); margin: 10px 0 2px; }
+  .workflow .shortcut code { font-size: 12.5px; }
+  .dialogue {
+    background: var(--dialogue-bg);
+    border-radius: 4px;
+    padding: 14px 16px;
+    margin: 12px 0 4px;
+    font-size: 14px;
+  }
+  .dialogue p { margin: 6px 0; }
+  .dialogue .you::before { content: "You — "; font-weight: 600; color: var(--accent); }
+  .dialogue .bot::before { content: "Claude — "; font-weight: 600; color: #3a6b3a; }
+  .dialogue .you, .dialogue .bot { display: block; }
+  details { margin: 10px 0; }
+  summary { cursor: pointer; font-size: 13px; color: var(--accent); padding: 4px 0; user-select: none; }
+  summary:hover { text-decoration: underline; }
+  .checklist { list-style: none; padding-left: 0; counter-reset: step; }
+  .checklist li {
+    position: relative;
+    padding-left: 34px;
+    margin: 14px 0;
+    counter-increment: step;
+  }
+  .checklist li::before {
+    content: counter(step);
+    position: absolute;
+    left: 0;
+    top: 1px;
+    width: 24px;
+    height: 24px;
+    border: 1.5px solid var(--accent);
+    border-radius: 50%;
+    color: var(--accent);
+    font-weight: 600;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  footer { margin-top: 56px; padding-top: 18px; border-top: 1px solid var(--rule); font-size: 13px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="eyebrow">Account Manager Tutorial</div>
+  <h1>Bidnamic OS</h1>
+  <p class="lede">Ten minutes to read, then you're working.</p>
+</header>
+
+<div class="toc">
+  <h3>In this guide</h3>
+  <ol>
+    <li><a href="#what">What this actually is</a></li>
+    <li><a href="#habits">Four habits that make it work</a></li>
+    <li><a href="#files">The bidnamic-os folder — works both ways</a></li>
+    <li><a href="#approvals">When it pauses to check with you</a></li>
+    <li><a href="#first-day">Your first day: six things to try</a></li>
+    <li><a href="#things">The things you'll do most</a></li>
+    <li><a href="#cheat">Plain-English prompts that just work</a></li>
+    <li><a href="#hygiene">Keeping the chat fresh</a></li>
+    <li><a href="#stuck">When you're stuck</a></li>
+    <li><a href="#glossary">Glossary</a></li>
+  </ol>
+</div>
+
+<h2 id="what"><span class="num">1.</span>What this actually is</h2>
+
+<p>You'll open a tool called <strong>Claude Code</strong> to talk to it. What you're really using is <strong>Bidnamic OS</strong> — an assistant that already knows every playbook the team follows, every client's history, every healthcheck, every SQL query our analysts have written and tested.</p>
+
+<p>It looks things up, investigates, explains, drafts, and proposes. You decide and act. Nothing goes into Admin UI unless you put it there yourself.</p>
+
+<p>If you've poked at a general-purpose chatbot before, this will feel different. Answers here are grounded in real Bidnamic data and real procedures. When it tells you BobsWidgetStore's ROAS is tracking 18% below goal, it's because it just ran the query — not because it's guessing.</p>
+
+<h2 id="habits"><span class="num">2.</span>Four habits that make it work</h2>
+
+<p>Two minutes to learn. Saves you hours later. These apply to any AI tool you'll use at Bidnamic, not just this one.</p>
+
+<h3>Pick the right job for it</h3>
+<p>Most of the time you'll just type plain English and let it figure out what you want. That's the expected way in — talk to it like you'd brief a smart junior colleague. Slash commands like <code>/client:portfolio-review</code> exist as shortcuts for when you already know the exact thing you want to run, a bit like keyboard shortcuts in Excel. Both work. Plain English is friendlier while you're learning.</p>
+
+<h3>Ask specifically</h3>
+<p>Name the client, the metric, the window. Be concrete.</p>
+<ul>
+  <li>Weak: <em>"how's Bob doing lately?"</em></li>
+  <li>Better: <em>"ROAS for BobsWidgetStore, last 14 days vs the 14 before that, GB only"</em></li>
+</ul>
+<p>If you can't be specific because you don't know yet, say that too. <em>"I don't know where to start — which clients in my portfolio dropped hardest this week?"</em> is a perfectly good opener.</p>
+
+<h3>Read the evidence, not just the conclusion</h3>
+<p>Every answer shows you the numbers it used. If something looks off, say so — it'll re-check. If a recommendation feels aggressive, push back.</p>
+<pre><code>That ROAS drop was a 3-day blip after a promo ended.
+Does the 14-day view still support lowering the target?</code></pre>
+<p>It's a junior analyst working for you, not an oracle. Your judgement is the point.</p>
+
+<h3>Close the loop</h3>
+<p>When you apply a change in Admin, tell it. <em>"I just set the target to 2.15 — check it took effect."</em> It'll verify the change is live. The next morning, open a fresh chat (see section 9) and ask <em>"how did that ROAS change on BobsWidgetStore land overnight?"</em> — it'll pull the numbers and tell you.</p>
+
+<h2 id="files"><span class="num">3.</span>The bidnamic-os folder — works both ways</h2>
+
+<p>When you install Bidnamic OS, a folder called <code>bidnamic-os</code> appears in your home folder (open Finder and hit ⇧⌘H, or look under <code>~/bidnamic-os</code>). Drop files into it, pull files out. That's how you share things with the assistant and how it hands things back — anything in that folder, Claude can see.</p>
+
+<h3>Things you drop in</h3>
+<p>Anything you want it to look at:</p>
+<ul>
+  <li>A screenshot of Admin UI or a Google Ads dashboard</li>
+  <li>A client email (save the message, or paste the body into a text file)</li>
+  <li>A PDF contract, brief, or deck</li>
+  <li>An exported CSV from anywhere</li>
+  <li>A Gong transcript, a photo of a whiteboard, a Slack screenshot</li>
+</ul>
+
+<p>Then just refer to it by name:</p>
+
+<pre><code>Read the screenshot I just dropped in the folder — bobs-widgets-admin.png.
+Tell me whether BobsWidgetStore's bid strategy looks right.</code></pre>
+
+<pre><code>Read the email I just saved into the folder. Draft a reply
+in a friendly but firm tone — we can't lower the ROAS target below 2.</code></pre>
+
+<p>The best kind of "ask specifically" is handing over the actual artefact.</p>
+
+<h3>Things it hands back</h3>
+<p>When it builds something — a report, an investigation summary — it can save the output as an HTML file into the same folder. Double-click to open, forward to a client, attach to an email, or keep for the captain's log. If it doesn't offer to save automatically, just ask:</p>
+
+<pre><code>Save that investigation as an HTML file I can send to my manager.</code></pre>
+
+<p>You'll get a filename back — something like <code>investigation-BobsWidgetStore-2026-04-14.html</code> — and it'll be sitting in the <code>bidnamic-os</code> folder a second later.</p>
+
+<div class="callout">
+  <strong>Habit.</strong> Treat the <code>bidnamic-os</code> folder as your working desk, not as a filing cabinet. Drop things in, let Claude rummage, pull things out. Clear it out at the end of the week if it gets messy.
+</div>
+
+<h2 id="approvals"><span class="num">4.</span>When it pauses to check with you</h2>
+
+<p>Most of the time you won't see permission prompts — the environment is pre-authorised, so Claude can run queries, read files, and save outputs without asking. You'll just see the work happening.</p>
+
+<p>The pauses you <em>will</em> see are the ones that matter: a skill asking you to confirm a proposed change, an investigation checking whether to act or wait, or an explicit "does this look right?" at a decision point. Those are yours to answer. Read what's on screen, sanity-check it against what you know about the client, and say yes or push back.</p>
+
+<p>If something surprises you — a recommendation that feels aggressive, a dataset choice you didn't expect — ask. <em>"Why did you pick that?"</em> and <em>"Explain that in plain English"</em> are two of the most useful things you can say to it.</p>
+
+<h2 id="first-day"><span class="num">5.</span>Your first day: six things to try</h2>
+
+<p>Work through these in order. Each one takes a few minutes. Tick them off as you go.</p>
+
+<ol class="checklist">
+  <li>Double-click the <strong>Bidnamic OS</strong> launcher (installed on your laptop as part of setup). A window will open and connect you. Type <em>hello</em> and hit enter. You should see a response within a second or two.</li>
+  <li>Your first real question: <em>"scan my portfolio and tell me which clients look worst today"</em>. Watch what it does. If it pauses to check something with you, read it and answer.</li>
+  <li>A client you know well: <em>"give me a quick spot-check on &lt;your best client&gt;"</em>. Read what it comes back with. Does it match what you already know? If not, push back and see what it says.</li>
+  <li>Drop a random screenshot into the <code>bidnamic-os</code> folder in your home folder. Say <em>"read what I just added to the folder and summarise it in one line"</em>. Just to prove to yourself file sharing works.</li>
+  <li>Ask it something it probably can't do — <em>"book me a dentist appointment"</em>, <em>"check my calendar"</em> — just to see how it handles it. (It'll tell you, politely.)</li>
+  <li>Type <code>/clear</code> to wipe the chat and start fresh. See section 9 for why this matters.</li>
+</ol>
+
+<p>That's it — you're oriented. Everything below is reference you can come back to.</p>
+
+<h2 id="things"><span class="num">6.</span>The things you'll do most</h2>
+
+<p>Five core workflows, plus three more that are worth knowing. For each one, the plain-English prompt comes first. If you prefer the shortcut, it's underneath. Both work.</p>
+
+<div class="workflow">
+  <h3>Morning triage <span class="badge">≈ 4–8 min</span></h3>
+  <p>Start your day by asking the system who needs attention. It'll scan your portfolio, rank clients by health, investigate the worst ones, and come back with a structured summary grouped by severity (P1 = urgent, P4 = informational).</p>
+<pre><code>Scan my portfolio and tell me who needs attention today —
+worst first, with reasons and a proposed next step for each.</code></pre>
+  <p class="shortcut">Shortcut: <code>/client:portfolio-review</code></p>
+  <details>
+    <summary>See how this usually plays out</summary>
+    <div class="dialogue">
+      <p class="you">Scan my portfolio and tell me who needs attention today.</p>
+      <p class="bot">Pulling health scores for your 23 clients, then investigating the five worst. Back in a few minutes.</p>
+      <p class="bot">[runs queries, ~5 min] Here's what I found. Two P1s needing action today, three P2s to monitor, and one goal that's been stale for 47 days…</p>
+      <p class="you">Tell me more about the first P1.</p>
+      <p class="bot">BobsWidgetStore — ROAS 14d is 1.92 against a goal of 2.5 (-23%). Spend is steady, clicks are steady, conversion rate has dropped from 3.1% to 2.2% over the same window. No captain's log entries in 9 days. Likely landing-page or product-availability issue. I'd recommend investigating the top product pages before touching bid strategy.</p>
+    </div>
+  </details>
+</div>
+
+<div class="workflow">
+  <h3>Spot-check on a client <span class="badge">≈ 60–90 sec</span></h3>
+  <p>Use before a call, or when a single client keeps coming up. You'll get outstanding healthchecks, recent captain's log entries, stale goals, recent calls and emails, and key contacts — a one-screen read of what's happening with them right now.</p>
+<pre><code>Give me a quick read on BobsWidgetStore —
+what's going on with them this week?</code></pre>
+  <p class="shortcut">Shortcut: <code>/client:portfolio-review --client_name="BobsWidgetStore"</code></p>
+</div>
+
+<div class="workflow">
+  <h3>Dig into a problem <span class="badge">≈ 2–5 min</span></h3>
+  <p>When portfolio-review flags something, or a client reports an issue you don't understand yet. The system follows the diagnostics playbook — gathers evidence across healthchecks, performance, config, recent changes — and comes back with a root cause and a recommendation labelled <em>Wait</em>, <em>Act</em>, or <em>Escalate</em>.</p>
+<pre><code>ROAS on BobsWidgetStore has dropped about 25% in the last week.
+Figure out why, and tell me whether to act or wait it out.</code></pre>
+  <p class="shortcut">Shortcut: <code>/client:investigate --client_name="BobsWidgetStore" --issue="ROAS drop 25% in 7 days"</code></p>
+</div>
+
+<div class="workflow">
+  <h3>Generate a monthly report <span class="badge">≈ 3–6 min</span></h3>
+  <p>Plain English works fine, and the system will save the HTML into the <code>bidnamic-os</code> folder so you can open it, forward it, or keep it.</p>
+<pre><code>Build me the monthly Shopping performance report for
+BobsWidgetStore — March 2026 vs March 2025, GB region.
+Save it into the folder.</code></pre>
+  <p class="shortcut">Shortcut: <code>/report:generate reports/shopping-performance-report.yml --client_name="BobsWidgetStore" --region="GB" --date_start="2026-03-01" --date_end="2026-03-31" --comparison_date_start="2025-03-01" --comparison_date_end="2025-03-31"</code></p>
+  <p>Other report specs that are ready to use:</p>
+  <ul>
+    <li><strong>Feed quality assessment</strong> — pre-pitch audit of a prospect's product feed. Great before a first sales call.</li>
+    <li><strong>Feed Optimisation title structure</strong> — which attributes are missing from titles, where the experiment opportunities are.</li>
+  </ul>
+</div>
+
+<h3>Two more worth knowing</h3>
+
+<div class="workflow">
+  <h3>Share of Voice planning for a pitch <span class="badge">≈ 3–5 min</span></h3>
+  <p>Prepping a conversation about market position? The system can segment a client's catalogue by revenue contribution, pull search term performance per segment, and tell you which terms are worth tracking in Search Term Tracking (and which are waste).</p>
+<pre><code>I'm prepping a Share of Voice conversation with BobsWidgetStore.
+Segment their catalogue by revenue, then tell me which search terms
+are worth tracking and which are waste.</code></pre>
+  <p class="shortcut">Procedure: <code>playbooks/onboarding-sov.md</code></p>
+</div>
+
+<div class="workflow">
+  <h3>When nothing quite fits <span class="badge">≈ varies</span></h3>
+  <p>If your question doesn't match any of the above — some weird ad-hoc thing no-one has asked before — just describe what you want and let it explore. It'll look at what tables exist, try a few queries, and come back with something. If the question turns out to be a recurring one, it can turn it into a reusable pattern so the next person who asks gets the answer faster.</p>
+<pre><code>I want to know which clients in my portfolio have had their
+merchant-centre disapproval rate go up in the last month,
+and whether that correlates with ROAS drops. We've never asked this before.</code></pre>
+  <p class="shortcut">Shortcut: <code>/development:explore-data</code></p>
+</div>
+
+<h2 id="cheat"><span class="num">7.</span>Plain-English prompts that just work</h2>
+
+<p>Bidnamic OS covers more ground than you might expect — performance across every service line, product and feed health, commercial context from HubSpot, competitive tracking, benchmarking, lifecycle, and more. Everything below is a real prompt you can type today. The system routes to the right playbook and dataset behind the scenes.</p>
+
+<h3>Performance, targets, and trends</h3>
+<pre><code>Show me BobsWidgetStore's spend and ROAS for the last 14 days,
+broken down by week.</code></pre>
+<pre><code>How is PMax spend trending against standard Shopping for
+BobsWidgetStore over the last 30 days? Is the hybrid split
+still working?</code></pre>
+<pre><code>Which of my clients are furthest below their ROAS goal this week?</code></pre>
+
+<h3>Products, feeds, and Merchant Centre</h3>
+<pre><code>Which products on BobsWidgetStore are disapproved right now,
+and what are the top reasons?</code></pre>
+<pre><code>Show me the worst-performing products — meaningful spend, zero
+or near-zero conversions — and whether any of them are on
+policy warnings.</code></pre>
+<pre><code>What's the feed fill rate for BobsWidgetStore's key attributes?
+Where are the biggest gaps?</code></pre>
+
+<h3>Feed Optimisation experiments</h3>
+<pre><code>Which Feed Optimisation experiments are running for
+BobsWidgetStore, and how are they performing?</code></pre>
+<pre><code>Any A/B tests ready to accept in my portfolio this week?</code></pre>
+<pre><code>Show me products that failed AI generation in the
+structured-title experiment on BobsWidgetStore.</code></pre>
+
+<h3>Search terms and Share of Voice</h3>
+<pre><code>Which Shopping search terms are wasting budget on BobsWidgetStore
+over the last 30 days?</code></pre>
+<pre><code>Am I tracking the right search terms for BobsWidgetStore in
+Search Term Tracking, or should we swap some out?</code></pre>
+<pre><code>Who's competing against BobsWidgetStore in the Shopping carousel
+for "hiking boots size 10"?</code></pre>
+
+<h3>Search Ads (DSA and RSA)</h3>
+<pre><code>Show me the DSA search terms on BobsWidgetStore that are spending
+the most with zero conversions — candidates for negatives.</code></pre>
+<pre><code>How is BobsWidgetStore's Search Ads budget split across DSA, RSA,
+and broad — and does the mix still make sense given recent ROAS?</code></pre>
+
+<h3>Bing and cross-channel</h3>
+<pre><code>Show me BobsWidgetStore's Bing performance against Google Shopping
+over the last month. Is the mirroring up to date?</code></pre>
+
+<h3>Commercial context from HubSpot</h3>
+<pre><code>What's the deal stage for BobsWidgetStore in HubSpot, and when
+does the contract come up for renewal?</code></pre>
+<pre><code>Summarise the last three calls with BobsWidgetStore — who was on,
+what did they ask for, and what did we commit to?</code></pre>
+<pre><code>Who's the primary contact at BobsWidgetStore and what's their email?</code></pre>
+
+<h3>Benchmarking against category</h3>
+<pre><code>How does BobsWidgetStore's Shopping ROAS compare to others in
+their category? Are we above or below the median?</code></pre>
+
+<h3>Lifecycle and status</h3>
+<pre><code>Any lifecycle risks in my portfolio — stuck activations, clients near
+auto-disable, anyone about to drop off this month?</code></pre>
+<pre><code>What's the current status of BobsWidgetStore — active, paused,
+activating, something else — and when did it last change?</code></pre>
+
+<h3>One that needs narrowing down</h3>
+<p>Some prompts are too broad on purpose, and the system will ask you to narrow them down. That's a good thing — it's saving you a wasted query. Here's what it looks like:</p>
+
+<div class="dialogue">
+  <p class="you">What search terms are wasting budget on BobsWidgetStore?</p>
+  <p class="bot">Two places to look: Shopping search terms (from Google Ads) and Search Ads terms (DSA and RSA). Most of BobsWidgetStore's spend sits on Shopping, so that's probably where the waste is. Want me to start there, or look at both?</p>
+  <p class="you">Start with Shopping.</p>
+  <p class="bot">Pulling Shopping search terms for the last 30 days, filtering to terms with &gt;£50 spend and ROAS below 1.5…</p>
+</div>
+
+<p>When an answer surprises you or a recommendation feels off, push back the same way. That back-and-forth is the whole point.</p>
+
+<h2 id="hygiene"><span class="num">8.</span>Keeping the chat fresh</h2>
+
+<p>One task, one chat. Finish a workflow, then clear the conversation before starting the next one. Mixing morning triage with a client investigation and a report in the same chat makes the assistant slower, more confused, and more likely to mix up clients.</p>
+
+<p>Rough rule: clear the chat when any of these is true:</p>
+<ul>
+  <li>You've been chatting for more than about 30 minutes</li>
+  <li>You've switched clients</li>
+  <li>You've switched tasks (triage → report → investigation)</li>
+  <li>The answers start feeling vague or drifting</li>
+</ul>
+
+<p>To clear, type:</p>
+
+<pre><code>/clear</code></pre>
+
+<p>That's it. Fresh slate. Nothing is lost — every skill, playbook, dataset, and report is still there. Only the conversation gets wiped.</p>
+
+<div class="callout">
+  <strong>Quick heuristic.</strong> If you're about to say <em>"actually, forget what I said earlier about Client A, now I want to look at Client B"</em> — that's the moment to <code>/clear</code> instead. Short, focused chats give sharper answers.
+</div>
+
+<h2 id="stuck"><span class="num">9.</span>When you're stuck</h2>
+
+<ul>
+  <li><strong>It's asking for a <code>client_id</code>.</strong> Just type the name — it'll match it for you.</li>
+  <li><strong>It picked a weird dataset.</strong> Ask <em>"why did you pick that dataset?"</em>. You'll learn something, or catch a mistake.</li>
+  <li><strong>An answer feels off.</strong> Say so. <em>"Double-check this against the active clients view"</em>, or <em>"show me the raw numbers"</em>. Scepticism is a feature.</li>
+  <li><strong>You don't understand the query it ran.</strong> <em>"Explain that query in plain English."</em></li>
+  <li><strong>You want a different angle.</strong> <em>"Try again, but this time look at the 30-day window."</em></li>
+  <li><strong>It can't help.</strong> Some things are genuinely outside the system's reach. Post in <code>#delivery-team</code> on Slack and tag someone from the tech team — they'll either add what's missing or point you at the right place.</li>
+</ul>
+
+<h2 id="glossary"><span class="num">10.</span>Glossary</h2>
+
+<details>
+  <summary>Skill</summary>
+  <p>A slash command (like <code>/client:portfolio-review</code>) that runs a named workflow. A shortcut for when you already know what you want. Plain English does the same thing.</p>
+</details>
+
+<details>
+  <summary>Playbook</summary>
+  <p>The written procedure behind a skill — step-by-step instructions for things like "how to adjust a ROAS target" or "how to onboard a new Shopping client". You rarely read them directly; skills follow them for you.</p>
+</details>
+
+<details>
+  <summary>Dataset</summary>
+  <p>A pre-written, pre-tested SQL query that returns a specific set of data (e.g., "recent performance for this client"). Skills use datasets so the numbers are always consistent.</p>
+</details>
+
+<details>
+  <summary>Report</summary>
+  <p>An HTML deliverable built from one or more datasets plus a narrative template. Saved into the <code>bidnamic-os</code> folder in your home folder, ready to forward to a client.</p>
+</details>
+
+<details>
+  <summary>Healthcheck</summary>
+  <p>An automated check that runs against each client (delivery, tracking, ROAS, spend, product disapprovals, and so on) and returns OK / WARNING / CRITICAL. You respond to WARNING and CRITICAL.</p>
+</details>
+
+<details>
+  <summary>Captain's log</summary>
+  <p>The per-client change log where AMs document config changes, goal updates, and issue responses. The system reads it to understand what's already been tried, so it won't propose something you did last week.</p>
+</details>
+
+<footer>
+  Questions, feedback, or something the system couldn't help with? Post in <code>#delivery-team</code> on Slack and tag someone from the tech team.
+</footer>
+
+<script>
+  document.querySelectorAll('pre').forEach(function(pre) {
+    var btn = document.createElement('button');
+    btn.className = 'copy-btn';
+    btn.type = 'button';
+    btn.textContent = 'copy';
+    btn.addEventListener('click', function() {
+      var code = pre.querySelector('code');
+      var text = (code ? code.innerText : pre.innerText).replace(/\s*copy\s*$/, '');
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function() {
+          btn.textContent = 'copied';
+          btn.classList.add('copied');
+          setTimeout(function() {
+            btn.textContent = 'copy';
+            btn.classList.remove('copied');
+          }, 1500);
+        }).catch(function() {
+          btn.textContent = 'select it';
+        });
+      } else {
+        btn.textContent = 'select it';
+      }
+    });
+    pre.appendChild(btn);
+  });
+</script>
+
+</body>
+</html>
