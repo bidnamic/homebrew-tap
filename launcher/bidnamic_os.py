@@ -1020,15 +1020,20 @@ def _check_post_install_environment():
 
 
 def cmd_post_install():
-    """Run the one-time privileged setup after `brew install bidnamic-os`.
+    """Run the one-time setup after `brew install bidnamic-os`.
 
-    Wipes artefacts from the legacy zip-based installer, then registers the
-    macOS EFS mount helper symlink and the watchdog LaunchAgent — neither
-    of which `brew install` can do unprivileged. Idempotent: re-running is
-    safe and re-asserts the desired state.
+    Installs the session-manager-plugin cask (formulae can't depend on
+    casks), wipes artefacts from the legacy zip-based installer, then
+    registers the macOS EFS mount helper symlink and the watchdog
+    LaunchAgent — neither of which `brew install` can do unprivileged.
+    Idempotent: re-running is safe and re-asserts the desired state.
     """
     if not _check_post_install_environment():
         return 1
+
+    if not shutil.which("session-manager-plugin"):
+        info("Installing AWS Session Manager plugin via brew...")
+        subprocess.run(["brew", "install", "--cask", "session-manager-plugin"], check=True)
 
     info("You'll be prompted for your macOS password.")
 

@@ -10,7 +10,9 @@ class BidnamicOs < Formula
   depends_on "python@3.14"
   depends_on "awscli"
   depends_on "aws/aws/amazon-efs-utils"
-  depends_on cask: "session-manager-plugin"
+  # session-manager-plugin is a cask. Homebrew formulae can't depend on
+  # casks, so `bidnamic-os post-install` installs it via `brew install
+  # --cask` if it's not already present.
 
   def install
     # Brew-managed venv with boto3. amazon-efs-utils maintains its own
