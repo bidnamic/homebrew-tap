@@ -1050,6 +1050,13 @@ def cmd_post_install():
         )
         return 1
     sudo("cp", str(watchdog_src), str(MACOS_WATCHDOG_PLIST))
+    # Plists in /Library/LaunchAgents auto-load at next login, but we load
+    # now so the very first `bidnamic-os connect` in this session has a
+    # supervised stunnel (restart on crash, IAM credential refresh).
+    # Unload-then-load makes re-running post-install safe even if a previous
+    # run already loaded the agent.
+    sudo("launchctl", "unload", str(MACOS_WATCHDOG_PLIST), check=False)
+    sudo("launchctl", "load", str(MACOS_WATCHDOG_PLIST))
 
     info("Setup complete. Run `bidnamic-os` to connect.")
     if TUTORIAL_PATH.exists():
