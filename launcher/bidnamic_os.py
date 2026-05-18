@@ -1177,8 +1177,9 @@ def main():
         sys.exit(1)
 
     # Local-only commands. These skip preflight + SSO entirely so they work
-    # without AWS credentials, network, or a configured profile. post-install
-    # and uninstall manage their own sudo calls.
+    # without AWS credentials, network, or a configured profile.
+    # post-install, upgrade, and uninstall manage their own sudo calls
+    # (upgrade re-runs post-install, which prompts for sudo).
     local_commands = {
         "version": cmd_version,
         "tutorial": cmd_tutorial,
