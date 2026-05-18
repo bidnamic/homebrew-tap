@@ -37,13 +37,23 @@ bidnamic-os version         # print the installed version
 bidnamic-os status          # check whether your environment is running
 bidnamic-os stop            # stop your environment
 bidnamic-os unmount         # unmount the EFS share
+bidnamic-os upgrade         # update to the latest release
 ```
 
 ## Upgrade
 
 ```
+bidnamic-os upgrade
+```
+
+This runs `brew update`, `brew upgrade bidnamic-os`, and re-runs
+`post-install` (which will prompt for your macOS password). The equivalent
+manual steps still work:
+
+```
 brew update
 brew upgrade bidnamic-os
+bidnamic-os post-install
 ```
 
 Releases are cut automatically on every change to `launcher/`; new versions

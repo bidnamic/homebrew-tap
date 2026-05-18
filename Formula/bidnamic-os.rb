@@ -45,7 +45,7 @@ class BidnamicOs < Formula
         - Tailscale Mac app:  https://tailscale.com/download/mac
 
       To upgrade:
-        brew update && brew upgrade bidnamic-os
+        bidnamic-os upgrade
 
       To remove everything (privileged artefacts and the brew package):
         bidnamic-os uninstall

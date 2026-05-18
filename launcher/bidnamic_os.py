@@ -1068,6 +1068,54 @@ def cmd_post_install():
         subprocess.run(["open", str(TUTORIAL_PATH)], check=False)
 
 
+def cmd_upgrade():
+    """Update Homebrew and upgrade bidnamic-os to the latest release.
+
+    Runs `brew update` (refreshes formula definitions, including this
+    tap) then `brew upgrade bidnamic-os`, and finally re-runs
+    post-install so any new privileged setup (EFS mount helper, watchdog
+    LaunchAgent) is applied. Re-running post-install is idempotent.
+
+    `brew upgrade` rewrites this script on disk, but the running process
+    still holds the *old* code in memory — so post-install is reached by
+    re-exec'ing the freshly installed `bidnamic-os`, not by calling
+    cmd_post_install() directly. That guarantees the new setup logic
+    runs. execv replaces this process, so nothing returns past it.
+    """
+    if platform.system() != "Darwin":
+        error("upgrade only supports macOS.")
+        return 1
+
+    brew = shutil.which("brew")
+    if brew is None:
+        error("Homebrew is not installed or not on PATH. See https://brew.sh")
+        return 1
+
+    info("Updating Homebrew formula definitions...")
+    if subprocess.run([brew, "update"]).returncode != 0:
+        error("`brew update` failed. Resolve the error above and retry.")
+        return 1
+
+    info("Upgrading bidnamic-os...")
+    # `brew upgrade` exits 0 whether it upgraded or the package was
+    # already current, so a zero exit tells us nothing about whether the
+    # script changed — we re-run post-install regardless; it's idempotent.
+    if subprocess.run([brew, "upgrade", "bidnamic-os"]).returncode != 0:
+        error("`brew upgrade bidnamic-os` failed. Resolve the error above and retry.")
+        return 1
+
+    bidnamic_os = shutil.which("bidnamic-os")
+    if bidnamic_os is None:
+        error(
+            "Could not find the bidnamic-os binary after upgrade. "
+            "Run `bidnamic-os post-install` manually."
+        )
+        return 1
+
+    info("Re-running post-install...")
+    os.execv(bidnamic_os, [bidnamic_os, "post-install"])
+
+
 def cmd_uninstall():
     """Reverse `post-install` and remove the brew package.
 
@@ -1112,7 +1160,7 @@ def main():
         default="connect",
         choices=[
             "connect", "stop", "status", "unmount", "tutorial",
-            "version", "post-install", "uninstall",
+            "version", "post-install", "upgrade", "uninstall",
         ],
         help="Command to run (default: connect)",
     )
@@ -1135,6 +1183,7 @@ def main():
         "version": cmd_version,
         "tutorial": cmd_tutorial,
         "post-install": cmd_post_install,
+        "upgrade": cmd_upgrade,
         "uninstall": cmd_uninstall,
     }
     if args.command in local_commands:
