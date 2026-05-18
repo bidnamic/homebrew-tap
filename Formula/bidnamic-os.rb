@@ -44,7 +44,7 @@ class BidnamicOs < Formula
       Prerequisites you must install yourself first:
         - Tailscale Mac app:  https://tailscale.com/download/mac
 
-      To upgrade:
+      To upgrade (re-runs post-install, so prompts for your macOS password):
         bidnamic-os upgrade
 
       To remove everything (privileged artefacts and the brew package):
