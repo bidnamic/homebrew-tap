@@ -559,20 +559,67 @@ def preflight_checks():
         sys.exit(1)
 
 
-def is_mounted(path):
-    """Return True if `path` is currently a mount point."""
+def _parse_mount_table(mount_output):
+    """Parse `mount(8)` output into a set of mount point paths.
+
+    Each line is "<device> on <mountpoint> (<type>, <opts>)". The device
+    may itself contain spaces (e.g. "map auto_home"), so we split on the
+    first " on "; the options are always a parenthesised suffix, so we
+    rsplit on the final " (" to tolerate a mount point containing " (".
+    """
+    mounts = set()
+    for line in mount_output.splitlines():
+        if " on " not in line or " (" not in line:
+            continue
+        mountpoint = line.split(" on ", 1)[1].rsplit(" (", 1)[0]
+        mounts.add(mountpoint)
+    return mounts
+
+
+def get_mount_table():
+    """Return the set of mount point paths from the kernel mount table.
+
+    Shells out to `mount(8)`, which reports getmntinfo(3) — in-kernel,
+    in-memory data. Crucially it never does I/O against the mounted
+    filesystems, so a stale or hung NFS mount is still listed instead of
+    making the probe itself hang. Returns an empty set if `mount` cannot
+    be run or exits non-zero.
+    """
     try:
-        return os.path.ismount(str(path))
-    except OSError:
-        return False
+        result = subprocess.run(
+            ["/sbin/mount"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (subprocess.SubprocessError, OSError):
+        return set()
+    if result.returncode != 0:
+        return set()
+    return _parse_mount_table(result.stdout)
+
+
+def is_mounted(path):
+    """Return True if `path` is currently a mount point.
+
+    Consults the kernel mount table rather than os.path.ismount(): the
+    latter lstat()s `path`, and on a stale NFS mount that lstat hangs (or,
+    with our soft mount, fails after timeo) — which os.path.ismount then
+    reports as "not a mount point". That is exactly the case we most need
+    to detect, so the stale mount can be torn down and remounted rather
+    than the launcher blindly trying (and failing) to mkdir over it. The
+    mount table lists stale and healthy mounts alike.
+    """
+    return str(path) in get_mount_table()
 
 
 def is_mount_healthy(path):
     """Return True if `path` responds to directory I/O.
 
     A stale NFS mount (server reboot, network change, prior umount that
-    only detached the namespace) still satisfies os.path.ismount, but
-    I/O against it fails. The launcher mounts with `soft` and a bounded
+    only detached the namespace) still appears in the kernel mount table
+    (so is_mounted reports it), but I/O against it fails. The launcher
+    mounts with `soft` and a bounded
     `timeo` (see mount_efs), so this probe returns an error within
     seconds instead of hanging forever, making it safe as a liveness
     check.
