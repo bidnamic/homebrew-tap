@@ -126,7 +126,7 @@
   }
   .dialogue p { margin: 6px 0; }
   .dialogue .you::before { content: "You — "; font-weight: 600; color: var(--accent); }
-  .dialogue .bot::before { content: "Claude — "; font-weight: 600; color: #3a6b3a; }
+  .dialogue .bot::before { content: "Brian — "; font-weight: 600; color: #3a6b3a; }
   .dialogue .you, .dialogue .bot { display: block; }
   details { margin: 10px 0; }
   summary { cursor: pointer; font-size: 13px; color: var(--accent); padding: 4px 0; user-select: none; }
@@ -168,9 +168,10 @@
 <div class="toc">
   <h3>In this guide</h3>
   <ol>
+    <li><a href="#install">Install &amp; upgrade</a></li>
     <li><a href="#what">What this actually is</a></li>
     <li><a href="#habits">Four habits that make it work</a></li>
-    <li><a href="#files">The bidnamic-os folder — works both ways</a></li>
+    <li><a href="#files">The bidnamic-os folder</a></li>
     <li><a href="#approvals">When it pauses to check with you</a></li>
     <li><a href="#first-day">Your first day: six things to try</a></li>
     <li><a href="#things">The things you'll do most</a></li>
@@ -181,15 +182,52 @@
   </ol>
 </div>
 
-<h2 id="what"><span class="num">1.</span>What this actually is</h2>
+<h2 id="install"><span class="num">1.</span>Install &amp; upgrade</h2>
 
-<p>You'll open a tool called <strong>Claude Code</strong> to talk to it. What you're really using is <strong>Bidnamic OS</strong> — an assistant that already knows every playbook the team follows, every client's history, every healthcheck, every SQL query our analysts have written and tested.</p>
+<p>Bidnamic OS ships as a Homebrew package. Three commands the first time, one command to upgrade after that.</p>
 
-<p>It looks things up, investigates, explains, drafts, and proposes. You decide and act. Nothing goes into Admin UI unless you put it there yourself.</p>
+<h3>Before you install</h3>
+<ul>
+  <li>macOS Tahoe (26.x) or later, on Apple Silicon</li>
+  <li><a href="https://tailscale.com/download/mac">Tailscale Mac app</a> — install, then sign in</li>
+  <li><a href="https://brew.sh">Homebrew</a> — if you don't already have it</li>
+</ul>
 
-<p>If you've poked at a general-purpose chatbot before, this will feel different. Answers here are grounded in real Bidnamic data and real procedures. When it tells you BobsWidgetStore's ROAS is tracking 18% below goal, it's because it just ran the query — not because it's guessing.</p>
+<h3>Install</h3>
+<pre><code>brew tap bidnamic/homebrew-tap
+brew install bidnamic-os
+bidnamic-os post-install</code></pre>
 
-<h2 id="habits"><span class="num">2.</span>Four habits that make it work</h2>
+<p><code>post-install</code> is a one-time privileged step that registers the EFS mount helper and starts the watchdog. It will prompt for your macOS password.</p>
+
+<h3>First run</h3>
+<pre><code>bidnamic-os</code></pre>
+
+<p>That's the command you'll type every time you want to talk to Brian. The first run pulls your cloud session up; it then drops you straight into the chat. Type <em>hello</em> and Brian will greet you with your portfolio count (see section 6, step 1).</p>
+
+<p>If you ever want to re-open this tutorial:</p>
+<pre><code>bidnamic-os tutorial</code></pre>
+
+<h3>Upgrade</h3>
+<pre><code>bidnamic-os upgrade</code></pre>
+
+<p>Runs <code>brew update</code>, <code>brew upgrade bidnamic-os</code>, and re-runs <code>post-install</code> (so it'll prompt for your password again). New releases land within minutes of a launcher change — run this any time something feels off, or once a week as a habit.</p>
+
+<div class="callout">
+  <strong>Tip.</strong> If <code>bidnamic-os</code> ever hangs or refuses to connect, the usual fix is <code>bidnamic-os upgrade</code> followed by a fresh <code>bidnamic-os</code>. Beyond that, post in <code>#delivery-team</code>.
+</div>
+
+<h2 id="what"><span class="num">2.</span>What this actually is</h2>
+
+<p>You'll open <strong>Claude Code</strong> in your terminal to talk to <strong>Brian</strong> — Bidnamic's assistant. Under the hood, Brian runs on top of <strong>Bidnamic OS</strong>: every playbook the team follows, every client's history, every healthcheck, every SQL query our analysts have written and tested.</p>
+
+<p>Brian looks things up, investigates, explains, drafts, and proposes. You decide and act. Nothing goes into Admin UI unless you put it there yourself.</p>
+
+<p>If you've poked at a general-purpose chatbot before, this will feel different. Answers here are grounded in real Bidnamic data and real procedures. When Brian tells you BobsWidgetStore's ROAS is tracking 18% below goal, it's because he just ran the query — not because he's guessing.</p>
+
+<p>Brian's remit is strictly ecommerce marketing — campaigns, feeds, ROAS, Shopping, Search, PMax, Bing, attribution, lifecycle, reporting. Ask him to book a dentist appointment and he'll politely decline.</p>
+
+<h2 id="habits"><span class="num">3.</span>Four habits that make it work</h2>
 
 <p>Two minutes to learn. Saves you hours later. These apply to any AI tool you'll use at Bidnamic, not just this one.</p>
 
@@ -213,12 +251,12 @@ Does the 14-day view still support lowering the target?</code></pre>
 <h3>Close the loop</h3>
 <p>When you apply a change in Admin, tell it. <em>"I just set the target to 2.15 — check it took effect."</em> It'll verify the change is live. The next morning, open a fresh chat (see section 9) and ask <em>"how did that ROAS change on BobsWidgetStore land overnight?"</em> — it'll pull the numbers and tell you.</p>
 
-<h2 id="files"><span class="num">3.</span>The bidnamic-os folder — works both ways</h2>
+<h2 id="files"><span class="num">4.</span>The bidnamic-os folder</h2>
 
-<p>When you install Bidnamic OS, a folder called <code>bidnamic-os</code> appears in your home folder (open Finder and hit ⇧⌘H, or look under <code>~/bidnamic-os</code>). Drop files into it, pull files out. That's how you share things with the assistant and how it hands things back — anything in that folder, Claude can see.</p>
+<p>When you install Bidnamic OS, a folder called <code>bidnamic-os</code> appears in your home folder (open Finder and hit ⇧⌘H, or look under <code>~/bidnamic-os</code>). Drop files into it and Brian can read them — that's how you hand him an artefact.</p>
 
 <h3>Things you drop in</h3>
-<p>Anything you want it to look at:</p>
+<p>Anything you want Brian to look at:</p>
 <ul>
   <li>A screenshot of Admin UI or a Google Ads dashboard</li>
   <li>A client email (save the message, or paste the body into a text file)</li>
@@ -237,43 +275,43 @@ in a friendly but firm tone — we can't lower the ROAS target below 2.</code></
 
 <p>The best kind of "ask specifically" is handing over the actual artefact.</p>
 
-<h3>Things it hands back</h3>
-<p>When it builds something — a report, an investigation summary — it can save the output as an HTML file into the same folder. Double-click to open, forward to a client, attach to an email, or keep for the captain's log. If it doesn't offer to save automatically, just ask:</p>
+<h3>Things Brian hands back</h3>
+<p>When Brian builds something — a report, an investigation summary, a branded HTML deliverable — he saves it for you and tells you the path. You don't need to track where it lands; just open the link Brian gives you, or ask him to remind you:</p>
 
-<pre><code>Save that investigation as an HTML file I can send to my manager.</code></pre>
+<pre><code>Where did you save that investigation again?</code></pre>
 
-<p>You'll get a filename back — something like <code>investigation-BobsWidgetStore-2026-04-14.html</code> — and it'll be sitting in the <code>bidnamic-os</code> folder a second later.</p>
+<p>Double-click to open, forward to a client, attach to an email, or keep for the captain's log.</p>
 
 <div class="callout">
-  <strong>Habit.</strong> Treat the <code>bidnamic-os</code> folder as your working desk, not as a filing cabinet. Drop things in, let Claude rummage, pull things out. Clear it out at the end of the week if it gets messy.
+  <strong>Habit.</strong> Treat the <code>bidnamic-os</code> folder as your working desk for inputs. Drop things in, let Brian rummage. Clear it out at the end of the week if it gets messy.
 </div>
 
-<h2 id="approvals"><span class="num">4.</span>When it pauses to check with you</h2>
+<h2 id="approvals"><span class="num">5.</span>When it pauses to check with you</h2>
 
-<p>Most of the time you won't see permission prompts — the environment is pre-authorised, so Claude can run queries, read files, and save outputs without asking. You'll just see the work happening.</p>
+<p>Most of the time you won't see permission prompts — the environment is pre-authorised, so Brian can run queries, read files, and save outputs without asking. You'll just see the work happening.</p>
 
 <p>The pauses you <em>will</em> see are the ones that matter: a skill asking you to confirm a proposed change, an investigation checking whether to act or wait, or an explicit "does this look right?" at a decision point. Those are yours to answer. Read what's on screen, sanity-check it against what you know about the client, and say yes or push back.</p>
 
-<p>If something surprises you — a recommendation that feels aggressive, a dataset choice you didn't expect — ask. <em>"Why did you pick that?"</em> and <em>"Explain that in plain English"</em> are two of the most useful things you can say to it.</p>
+<p>If something surprises you — a recommendation that feels aggressive, a dataset choice you didn't expect — ask. <em>"Why did you pick that?"</em> and <em>"Explain that in plain English"</em> are two of the most useful things you can say.</p>
 
-<h2 id="first-day"><span class="num">5.</span>Your first day: six things to try</h2>
+<h2 id="first-day"><span class="num">6.</span>Your first day: six things to try</h2>
 
 <p>Work through these in order. Each one takes a few minutes. Tick them off as you go.</p>
 
 <ol class="checklist">
-  <li>Double-click the <strong>Bidnamic OS</strong> launcher (installed on your laptop as part of setup). A window will open and connect you. Type <em>hello</em> and hit enter. You should see a response within a second or two.</li>
-  <li>Your first real question: <em>"scan my portfolio and tell me which clients look worst today"</em>. Watch what it does. If it pauses to check something with you, read it and answer.</li>
-  <li>A client you know well: <em>"give me a quick spot-check on &lt;your best client&gt;"</em>. Read what it comes back with. Does it match what you already know? If not, push back and see what it says.</li>
+  <li>Open a terminal and run <code>bidnamic-os</code>. It'll connect to your cloud session and drop you into the chat. Type <em>hello</em> and hit enter. Brian will greet you with your portfolio count — something like <em>"Hello, Lewis. There are 15 active clients in your portfolio. What can I help you with today?"</em> When you say <em>"my clients"</em> in any prompt, Brian scopes to your portfolio automatically.</li>
+  <li>Your first real question: <em>"scan my portfolio and tell me which clients look worst today"</em>. Watch what Brian does. If he pauses to check something with you, read it and answer.</li>
+  <li>A client you know well: <em>"give me a quick spot-check on &lt;your best client&gt;"</em>. Read what Brian comes back with. Does it match what you already know? If not, push back and see what he says.</li>
   <li>Drop a random screenshot into the <code>bidnamic-os</code> folder in your home folder. Say <em>"read what I just added to the folder and summarise it in one line"</em>. Just to prove to yourself file sharing works.</li>
-  <li>Ask it something it probably can't do — <em>"book me a dentist appointment"</em>, <em>"check my calendar"</em> — just to see how it handles it. (It'll tell you, politely.)</li>
+  <li>Ask Brian something outside his remit — <em>"book me a dentist appointment"</em>, <em>"check my calendar"</em> — just to see how he handles it. (He'll tell you, politely.)</li>
   <li>Type <code>/clear</code> to wipe the chat and start fresh. See section 9 for why this matters.</li>
 </ol>
 
 <p>That's it — you're oriented. Everything below is reference you can come back to.</p>
 
-<h2 id="things"><span class="num">6.</span>The things you'll do most</h2>
+<h2 id="things"><span class="num">7.</span>The things you'll do most</h2>
 
-<p>Five core workflows, plus three more that are worth knowing. For each one, the plain-English prompt comes first. If you prefer the shortcut, it's underneath. Both work.</p>
+<p>Five core workflows, plus two more that are worth knowing. For each one, the plain-English prompt comes first. If you prefer the shortcut, it's underneath. Both work.</p>
 
 <div class="workflow">
   <h3>Morning triage <span class="badge">≈ 4–8 min</span></h3>
@@ -311,41 +349,39 @@ Figure out why, and tell me whether to act or wait it out.</code></pre>
 
 <div class="workflow">
   <h3>Generate a monthly report <span class="badge">≈ 3–6 min</span></h3>
-  <p>Plain English works fine, and the system will save the HTML into the <code>bidnamic-os</code> folder so you can open it, forward it, or keep it.</p>
+  <p>Just ask in plain English. Brian picks the right queries, writes the HTML, brands it, and tells you where it saved.</p>
 <pre><code>Build me the monthly Shopping performance report for
-BobsWidgetStore — March 2026 vs March 2025, GB region.
-Save it into the folder.</code></pre>
-  <p class="shortcut">Shortcut: <code>/report:generate reports/shopping-performance-report.yml --client_name="BobsWidgetStore" --region="GB" --date_start="2026-03-01" --date_end="2026-03-31" --comparison_date_start="2025-03-01" --comparison_date_end="2025-03-31"</code></p>
-  <p>Other report specs that are ready to use:</p>
+BobsWidgetStore — March 2026 vs March 2025, GB region.</code></pre>
+  <p>Same approach for other deliverables you might want:</p>
   <ul>
-    <li><strong>Feed quality assessment</strong> — pre-pitch audit of a prospect's product feed. Great before a first sales call.</li>
-    <li><strong>Feed Optimisation title structure</strong> — which attributes are missing from titles, where the experiment opportunities are.</li>
+    <li><em>"Pre-pitch feed quality audit for &lt;prospect&gt; — what are the obvious problems with their product feed?"</em></li>
+    <li><em>"Feed Optimisation title structure for BobsWidgetStore — which attributes are missing, where are the experiment opportunities?"</em></li>
+    <li><em>"Spend and ROAS for BobsWidgetStore the last 90 days, weekly, as an HTML I can forward."</em></li>
   </ul>
+  <p>If Brian's first cut isn't what you want — wrong window, wrong segmentation, missing a chart — say so. He'll rebuild it.</p>
 </div>
 
 <h3>Two more worth knowing</h3>
 
 <div class="workflow">
   <h3>Share of Voice planning for a pitch <span class="badge">≈ 3–5 min</span></h3>
-  <p>Prepping a conversation about market position? The system can segment a client's catalogue by revenue contribution, pull search term performance per segment, and tell you which terms are worth tracking in Search Term Tracking (and which are waste).</p>
+  <p>Prepping a conversation about market position? Brian can segment a client's catalogue by revenue contribution, pull search term performance per segment, and tell you which terms are worth tracking in Search Term Tracking (and which are waste).</p>
 <pre><code>I'm prepping a Share of Voice conversation with BobsWidgetStore.
 Segment their catalogue by revenue, then tell me which search terms
 are worth tracking and which are waste.</code></pre>
-  <p class="shortcut">Procedure: <code>playbooks/onboarding-sov.md</code></p>
 </div>
 
 <div class="workflow">
   <h3>When nothing quite fits <span class="badge">≈ varies</span></h3>
-  <p>If your question doesn't match any of the above — some weird ad-hoc thing no-one has asked before — just describe what you want and let it explore. It'll look at what tables exist, try a few queries, and come back with something. If the question turns out to be a recurring one, it can turn it into a reusable pattern so the next person who asks gets the answer faster.</p>
+  <p>If your question doesn't match any of the above — some weird ad-hoc thing no-one has asked before — just describe what you want and let Brian explore. He'll look at what tables exist, try a few queries, and come back with something.</p>
 <pre><code>I want to know which clients in my portfolio have had their
 merchant-centre disapproval rate go up in the last month,
 and whether that correlates with ROAS drops. We've never asked this before.</code></pre>
-  <p class="shortcut">Shortcut: <code>/development:explore-data</code></p>
 </div>
 
-<h2 id="cheat"><span class="num">7.</span>Plain-English prompts that just work</h2>
+<h2 id="cheat"><span class="num">8.</span>Plain-English prompts that just work</h2>
 
-<p>Bidnamic OS covers more ground than you might expect — performance across every service line, product and feed health, commercial context from HubSpot, competitive tracking, benchmarking, lifecycle, and more. Everything below is a real prompt you can type today. The system routes to the right playbook and dataset behind the scenes.</p>
+<p>Bidnamic OS covers more ground than you might expect — performance across every service line, product and feed health, commercial context from HubSpot, competitive tracking, benchmarking, lifecycle, and more. Everything below is a real prompt you can type today. Brian routes to the right playbook and dataset behind the scenes.</p>
 
 <h3>Performance, targets, and trends</h3>
 <pre><code>Show me BobsWidgetStore's spend and ROAS for the last 14 days,
@@ -407,7 +443,7 @@ auto-disable, anyone about to drop off this month?</code></pre>
 activating, something else — and when did it last change?</code></pre>
 
 <h3>One that needs narrowing down</h3>
-<p>Some prompts are too broad on purpose, and the system will ask you to narrow them down. That's a good thing — it's saving you a wasted query. Here's what it looks like:</p>
+<p>Some prompts are too broad on purpose, and Brian will ask you to narrow them down. That's a good thing — it's saving you a wasted query. Here's what it looks like:</p>
 
 <div class="dialogue">
   <p class="you">What search terms are wasting budget on BobsWidgetStore?</p>
@@ -418,9 +454,9 @@ activating, something else — and when did it last change?</code></pre>
 
 <p>When an answer surprises you or a recommendation feels off, push back the same way. That back-and-forth is the whole point.</p>
 
-<h2 id="hygiene"><span class="num">8.</span>Keeping the chat fresh</h2>
+<h2 id="hygiene"><span class="num">9.</span>Keeping the chat fresh</h2>
 
-<p>One task, one chat. Finish a workflow, then clear the conversation before starting the next one. Mixing morning triage with a client investigation and a report in the same chat makes the assistant slower, more confused, and more likely to mix up clients.</p>
+<p>One task, one chat. Finish a workflow, then clear the conversation before starting the next one. Mixing morning triage with a client investigation and a report in the same chat makes Brian slower, more confused, and more likely to mix up clients.</p>
 
 <p>Rough rule: clear the chat when any of these is true:</p>
 <ul>
@@ -440,18 +476,26 @@ activating, something else — and when did it last change?</code></pre>
   <strong>Quick heuristic.</strong> If you're about to say <em>"actually, forget what I said earlier about Client A, now I want to look at Client B"</em> — that's the moment to <code>/clear</code> instead. Short, focused chats give sharper answers.
 </div>
 
-<h2 id="stuck"><span class="num">9.</span>When you're stuck</h2>
+<h3>Picking up where you left off</h3>
+<p>If you walked away mid-task — interrupted by a meeting, laptop went to sleep, accidentally closed the terminal — type:</p>
+
+<pre><code>/resume</code></pre>
+
+<p>That brings back the previous chat so you don't have to re-explain the context. Use <code>/resume</code> when you want continuity, <code>/clear</code> when you want a fresh slate. If you're not sure, <code>/clear</code> is the safer bet — focused chats beat continuity.</p>
+
+<h2 id="stuck"><span class="num">10.</span>When you're stuck</h2>
 
 <ul>
-  <li><strong>It's asking for a <code>client_id</code>.</strong> Just type the name — it'll match it for you.</li>
-  <li><strong>It picked a weird dataset.</strong> Ask <em>"why did you pick that dataset?"</em>. You'll learn something, or catch a mistake.</li>
+  <li><strong>Brian's asking for a <code>client_id</code>.</strong> Just type the name — he'll match it for you.</li>
+  <li><strong>He picked a weird dataset.</strong> Ask <em>"why did you pick that dataset?"</em>. You'll learn something, or catch a mistake.</li>
   <li><strong>An answer feels off.</strong> Say so. <em>"Double-check this against the active clients view"</em>, or <em>"show me the raw numbers"</em>. Scepticism is a feature.</li>
-  <li><strong>You don't understand the query it ran.</strong> <em>"Explain that query in plain English."</em></li>
+  <li><strong>You don't understand the query he ran.</strong> <em>"Explain that query in plain English."</em></li>
   <li><strong>You want a different angle.</strong> <em>"Try again, but this time look at the 30-day window."</em></li>
-  <li><strong>It can't help.</strong> Some things are genuinely outside the system's reach. Post in <code>#delivery-team</code> on Slack and tag someone from the tech team — they'll either add what's missing or point you at the right place.</li>
+  <li><strong>The connection or launcher is misbehaving.</strong> Run <code>bidnamic-os upgrade</code>, then <code>bidnamic-os</code> again. That fixes most things.</li>
+  <li><strong>Brian can't help.</strong> Some things are genuinely outside Bidnamic OS's reach. Post in <code>#delivery-team</code> on Slack and tag someone from the tech team — they'll either add what's missing or point you at the right place.</li>
 </ul>
 
-<h2 id="glossary"><span class="num">10.</span>Glossary</h2>
+<h2 id="glossary"><span class="num">11.</span>Glossary</h2>
 
 <details>
   <summary>Skill</summary>
@@ -470,7 +514,7 @@ activating, something else — and when did it last change?</code></pre>
 
 <details>
   <summary>Report</summary>
-  <p>An HTML deliverable built from one or more datasets plus a narrative template. Saved into the <code>bidnamic-os</code> folder in your home folder, ready to forward to a client.</p>
+  <p>An HTML deliverable built from one or more datasets plus a narrative template, branded and styled by Brian. He'll tell you the path when he's saved it; you double-click to open and forward.</p>
 </details>
 
 <details>
