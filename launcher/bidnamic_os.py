@@ -2,12 +2,19 @@
 """CLI for connecting to our Bidnamic OS in the cloud"""
 
 import argparse
+import fcntl
 import os
 import platform
+import pty
+import select
 import shutil
+import signal
+import struct
 import subprocess
 import sys
+import termios
 import time
+import tty
 import webbrowser
 from itertools import batched
 from pathlib import Path
@@ -292,34 +299,155 @@ def wait_for_task(ecs, cluster, task_arn, max_wait=120):
     sys.exit(1)
 
 
+# ECS Exec runs over SSM Session Manager, which terminates a session after 20
+# minutes of idle time — a hard-coded, non-configurable limit for ECS Exec.
+# exec_with_keepalive nudges the terminal size every KEEPALIVE_INTERVAL_SECONDS
+# to emit a harmless resize that (we rely on, see the design doc) the SSM idle
+# timer counts as activity. 600s = 10 min gives two nudges per 20-min window.
+# Overridable via env var only so the validation experiment can shorten it
+# without editing code; there is intentionally no user-facing flag.
+KEEPALIVE_INTERVAL_SECONDS = int(os.environ.get("BIDNAMIC_OS_KEEPALIVE_INTERVAL", "600"))
+
+
+def _pty_window_size(tty_fd):
+    """Return (rows, cols) of the terminal on tty_fd, defaulting to 24x80."""
+    try:
+        size = os.get_terminal_size(tty_fd)
+        return size.lines, size.columns
+    except OSError:
+        return 24, 80
+
+
+def _set_pty_window_size(fd, rows, cols):
+    """Set the window size of the pty referred to by fd."""
+    fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
+
+
+def exec_with_keepalive(argv):
+    """Run argv attached to a pty, keeping the SSM session alive while idle.
+
+    Wraps the child (the interactive `aws ecs execute-command`) in a
+    pseudo-terminal so a background timer can periodically resize it. The
+    resize fires SIGWINCH in the AWS CLI, which the session-manager-plugin
+    forwards to the SSM agent as a `set_size` control message — harmless to the
+    remote shell (no bytes injected) but enough to reset the 20-minute idle
+    timer, so a session left untouched is not dropped mid-task.
+
+    Returns the child's exit code.
+
+    Falls back to a plain subprocess when stdin is not a tty: there is no
+    terminal to make raw or to keep alive (and the interactive session would be
+    pointless anyway), so the pty machinery would only get in the way.
+    """
+    if not sys.stdin.isatty():
+        try:
+            return subprocess.run(argv).returncode
+        except KeyboardInterrupt:
+            return 130
+
+    pid, master_fd = pty.fork()
+    if pid == 0:
+        # Child: become the AWS CLI. execvp only returns on failure.
+        try:
+            os.execvp(argv[0], argv)
+        except OSError:
+            os._exit(127)
+
+    stdin_fd = sys.stdin.fileno()
+    old_attrs = termios.tcgetattr(stdin_fd)
+
+    rows, cols = _pty_window_size(stdin_fd)
+    _set_pty_window_size(master_fd, rows, cols)
+
+    # Forward real user resizes to the child so the remote shell tracks the
+    # actual terminal. Changing master_fd's size signals the child, not us, so
+    # the periodic keepalive nudge below never re-enters this handler.
+    def handle_resize(signum, frame):
+        r, c = _pty_window_size(stdin_fd)
+        _set_pty_window_size(master_fd, r, c)
+
+    old_winch = signal.signal(signal.SIGWINCH, handle_resize)
+
+    last_keepalive = time.monotonic()
+    try:
+        tty.setraw(stdin_fd)
+        while True:
+            now = time.monotonic()
+            if now - last_keepalive >= KEEPALIVE_INTERVAL_SECONDS:
+                # Shrink one column and restore: two genuine size changes, so
+                # the agent definitely sees activity. The brief intermediate
+                # size makes full-screen apps repaint once — the accepted cost.
+                r, c = _pty_window_size(stdin_fd)
+                nudged = c - 1 if c > 1 else c + 1
+                _set_pty_window_size(master_fd, r, nudged)
+                time.sleep(0.05)
+                _set_pty_window_size(master_fd, r, c)
+                last_keepalive = now
+
+            # PEP 475 auto-retries select across the SIGWINCH handler, so a
+            # user resize mid-wait doesn't surface as an error here.
+            readable, _, _ = select.select([stdin_fd, master_fd], [], [], 1)
+
+            if stdin_fd in readable:
+                data = os.read(stdin_fd, 1024)
+                if not data:
+                    break
+                try:
+                    os.write(master_fd, data)
+                except OSError:
+                    # Child closed the pty (session ended).
+                    break
+
+            if master_fd in readable:
+                try:
+                    data = os.read(master_fd, 1024)
+                except OSError:
+                    # Child closed the pty (session ended).
+                    break
+                if not data:
+                    break
+                try:
+                    os.write(sys.stdout.fileno(), data)
+                except OSError:
+                    # stdout closed (e.g. piped reader went away).
+                    break
+    finally:
+        termios.tcsetattr(stdin_fd, termios.TCSADRAIN, old_attrs)
+        signal.signal(signal.SIGWINCH, old_winch)
+        os.close(master_fd)
+
+    _, status = os.waitpid(pid, 0)
+    return os.waitstatus_to_exitcode(status)
+
+
 def connect_to_task(profile, cluster, task_arn, username):
     """Connect to a running task via ECS Exec (shells out to AWS CLI for interactive session)."""
     task_id = task_arn.split("/")[-1]
     container_name = f"{SERVICE_TAG}-{username}"
 
     info("Connecting...")
-    try:
-        result = subprocess.run(
-            [
-                "aws",
-                "ecs",
-                "execute-command",
-                "--profile",
-                profile,
-                "--cluster",
-                cluster,
-                "--task",
-                task_id,
-                "--container",
-                container_name,
-                "--interactive",
-                "--command",
-                f"gosu {username} /opt/bin/start-bidnamic-os.sh",
-            ],
-        )
-    except KeyboardInterrupt:
-        return 130
-    return result.returncode
+    # Wrapped in a pty keepalive (see exec_with_keepalive) so a session left
+    # idle past SSM's 20-minute timeout isn't dropped. Ctrl-C is handled by the
+    # remote shell — in raw mode the 0x03 byte flows through to it rather than
+    # killing the launcher — so there is no KeyboardInterrupt to catch here.
+    return exec_with_keepalive(
+        [
+            "aws",
+            "ecs",
+            "execute-command",
+            "--profile",
+            profile,
+            "--cluster",
+            cluster,
+            "--task",
+            task_id,
+            "--container",
+            container_name,
+            "--interactive",
+            "--command",
+            f"gosu {username} /opt/bin/start-bidnamic-os.sh",
+        ]
+    )
 
 
 def efs_utils_installed():
