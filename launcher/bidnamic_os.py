@@ -303,10 +303,8 @@ def wait_for_task(ecs, cluster, task_arn, max_wait=120):
 # minutes of idle time — a hard-coded, non-configurable limit for ECS Exec.
 # exec_with_keepalive nudges the terminal size every KEEPALIVE_INTERVAL_SECONDS
 # to emit a harmless resize that (we rely on, see the design doc) the SSM idle
-# timer counts as activity. 600s = 10 min gives two nudges per 20-min window.
-# Overridable via env var only so the validation experiment can shorten it
-# without editing code; there is intentionally no user-facing flag.
-KEEPALIVE_INTERVAL_SECONDS = int(os.environ.get("BIDNAMIC_OS_KEEPALIVE_INTERVAL", "600"))
+# timer counts as activity. 120s = 2 min nudges well inside the 20-min window.
+KEEPALIVE_INTERVAL_SECONDS = 120
 
 
 def _pty_window_size(tty_fd):
