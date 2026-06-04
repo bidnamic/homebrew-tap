@@ -1,0 +1,351 @@
+<!-- AM-facing install & connection guide. Shares the visual style of TUTORIAL.html. -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bidnamic OS — Install &amp; Connect</title>
+<style>
+  :root {
+    --bg: #fbfaf7;
+    --ink: #1a1a1a;
+    --muted: #5f5f5f;
+    --accent: #c8502b;
+    --rule: #e6e2d8;
+    --code-bg: #f1ede3;
+    --callout-bg: #fff6ec;
+    --callout-border: #e8c9a8;
+    --dialogue-bg: #f6f3ea;
+    --badge-bg: #ece8db;
+    --ok: #3a6b3a;
+    --ok-bg: #eef4ea;
+    --ok-border: #bcd6b0;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink); }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 1.55;
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 48px 32px 96px;
+  }
+  header { border-bottom: 2px solid var(--ink); padding-bottom: 20px; margin-bottom: 32px; }
+  header .eyebrow { font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
+  header h1 { margin: 6px 0 4px; font-size: 34px; line-height: 1.15; }
+  header p.lede { margin: 8px 0 0; color: var(--muted); font-size: 17px; }
+  h2 {
+    font-size: 22px;
+    margin: 48px 0 12px;
+    border-top: 1px solid var(--rule);
+    padding-top: 28px;
+  }
+  h2 .num { color: var(--accent); font-variant-numeric: tabular-nums; margin-right: 10px; }
+  h3 { font-size: 17px; margin: 24px 0 6px; }
+  h4 { font-size: 14px; margin: 16px 0 4px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+  p { margin: 10px 0; }
+  ul, ol { padding-left: 22px; }
+  li { margin: 6px 0; }
+  a { color: var(--accent); }
+  em { color: #333; }
+  code {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 13.5px;
+    background: var(--code-bg);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+  pre {
+    position: relative;
+    background: var(--code-bg);
+    border-left: 3px solid var(--accent);
+    padding: 14px 16px;
+    padding-right: 70px;
+    overflow-x: auto;
+    border-radius: 3px;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    margin: 14px 0;
+  }
+  pre code { background: none; padding: 0; font-size: inherit; }
+  .copy-btn {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    font: 11px/1 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    padding: 4px 9px;
+    border: 1px solid var(--rule);
+    background: #fff;
+    color: var(--muted);
+    border-radius: 3px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.12s, color 0.12s, border-color 0.12s;
+  }
+  pre:hover .copy-btn, .copy-btn:focus { opacity: 1; }
+  .copy-btn:hover { color: var(--accent); border-color: var(--accent); }
+  .copy-btn.copied { color: var(--accent); border-color: var(--accent); opacity: 1; }
+  .toc { background: #fff; border: 1px solid var(--rule); padding: 16px 22px; border-radius: 4px; margin-bottom: 8px; }
+  .toc h3 { margin: 0 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+  .toc ol { margin: 0; padding-left: 20px; font-size: 14px; }
+  .toc ol li { margin: 2px 0; }
+  .toc a { text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+  .callout {
+    background: var(--callout-bg);
+    border-left: 3px solid var(--callout-border);
+    padding: 12px 16px;
+    margin: 16px 0;
+    font-size: 14.5px;
+    border-radius: 0 3px 3px 0;
+  }
+  .callout strong { color: var(--accent); }
+  .callout.ok { background: var(--ok-bg); border-left-color: var(--ok-border); }
+  .callout.ok strong { color: var(--ok); }
+  table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 14.5px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 600; }
+  td code { font-size: 12.5px; }
+  .stage { font-size: 11px; letter-spacing: 0.04em; background: var(--badge-bg); color: var(--muted); padding: 2px 8px; border-radius: 10px; font-weight: 500; }
+  .need { border: 1px solid var(--rule); background: #fff; padding: 4px 22px; border-radius: 4px; margin: 18px 0; }
+  details { margin: 10px 0; }
+  summary { cursor: pointer; font-size: 13px; color: var(--accent); padding: 4px 0; user-select: none; }
+  summary:hover { text-decoration: underline; }
+  .checklist { list-style: none; padding-left: 0; counter-reset: step; }
+  .checklist li {
+    position: relative;
+    padding-left: 34px;
+    margin: 14px 0;
+    counter-increment: step;
+  }
+  .checklist li::before {
+    content: counter(step);
+    position: absolute;
+    left: 0;
+    top: 1px;
+    width: 24px;
+    height: 24px;
+    border: 1.5px solid var(--accent);
+    border-radius: 50%;
+    color: var(--accent);
+    font-weight: 600;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .tick { list-style: none; padding-left: 0; }
+  .tick li { position: relative; padding-left: 30px; margin: 8px 0; }
+  .tick li::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 3px;
+    width: 16px;
+    height: 16px;
+    border: 1.5px solid var(--ok);
+    border-radius: 4px;
+  }
+  footer { margin-top: 56px; padding-top: 18px; border-top: 1px solid var(--rule); font-size: 13px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="eyebrow">Install &amp; Connection Guide</div>
+  <h1>Bidnamic OS</h1>
+  <p class="lede">Get your Mac ready, then connect. Allow about 30–60 minutes, mostly waiting.</p>
+</header>
+
+<div class="toc">
+  <h3>In this guide</h3>
+  <ol>
+    <li><a href="#before">Before you start</a></li>
+    <li><a href="#tahoe">Upgrade to macOS Tahoe</a></li>
+    <li><a href="#xcode">Install Xcode Command Line Tools</a></li>
+    <li><a href="#homebrew">Install Homebrew</a></li>
+    <li><a href="#tailscale">Install Tailscale</a></li>
+    <li><a href="#accounts">Set up your accounts</a></li>
+    <li><a href="#install">Install Bidnamic OS</a></li>
+    <li><a href="#connect">Connect for the first time</a></li>
+  </ol>
+</div>
+
+<p>This guide takes you from a fresh Mac to a working Bidnamic OS chat prompt. Work through the sections <strong>in order</strong> — each one builds on the last. Sections&nbsp;2–5 prepare your Mac; sections&nbsp;6–8 get you connected.</p>
+
+<h2 id="before"><span class="num">1.</span>Before you start</h2>
+
+<p>A few things to have ready. Nothing here is hard — just easier with everything to hand.</p>
+
+<div class="need">
+  <h4>You will need</h4>
+  <ul>
+    <li>Your Mac <strong>admin password</strong> (the one you use to log in / install software)</li>
+    <li>Your <strong>work email address</strong></li>
+    <li>A <strong>stable internet connection</strong></li>
+    <li>Your Mac <strong>plugged into power</strong></li>
+  </ul>
+</div>
+
+<p>You'll spend a lot of this guide in the <strong>Terminal</strong> app. To open it at any point: press <strong>Command + Space</strong>, type <em>Terminal</em>, and press <strong>Enter</strong>. (It also lives in <em>Applications &rarr; Utilities</em> in the Finder.) When a step gives you a command, you can hover the grey box and click <strong>copy</strong>, then paste into Terminal with <strong>Command + V</strong> and hit <strong>Enter</strong>.</p>
+
+<h2 id="tahoe"><span class="num">2.</span>Upgrade to macOS Tahoe <span class="stage">Mac setup</span></h2>
+
+<p>Bidnamic OS expects an up-to-date Mac. Start here even if you think you're current.</p>
+
+<ol class="checklist">
+  <li>Click the <strong>Apple logo</strong> in the top-left corner of your screen.</li>
+  <li>Click <strong>System Settings</strong>.</li>
+  <li>Go to <strong>General</strong>.</li>
+  <li>Click <strong>Software Update</strong> and wait for your Mac to check for updates.</li>
+  <li>If <strong>macOS Tahoe</strong> is shown, click <strong>Upgrade Now</strong> (or <strong>Update Now</strong>) and follow the on-screen instructions.</li>
+</ol>
+
+<div class="callout">
+  <strong>Keep it plugged in.</strong> Don't close the lid while the update runs. Your Mac may restart several times — that's normal. If macOS Tahoe doesn't appear at all, your Mac may already be up to date, or it may not be compatible — <a href="#help">ask for help</a> if you're unsure.
+</div>
+
+<h2 id="xcode"><span class="num">3.</span>Install Xcode Command Line Tools <span class="stage">Mac setup</span></h2>
+
+<p>These are the developer tools Homebrew needs. Open <strong>Terminal</strong> (Command&nbsp;+&nbsp;Space, type <em>Terminal</em>, Enter), then run:</p>
+
+<pre><code>xcode-select --install</code></pre>
+
+<p>A pop-up should appear — click <strong>Install</strong>, follow the prompts, and wait for it to finish. If Terminal says the tools are <em>already installed</em>, that's fine; carry on.</p>
+
+<h3>Check it worked</h3>
+<p>In the same Terminal window, run:</p>
+
+<pre><code>clang --version</code></pre>
+
+<p>If the tools installed correctly you'll see a version message — something like:</p>
+
+<pre><code>Apple clang version ...
+Target: ...
+Thread model: ...</code></pre>
+
+<p>If instead you see <code>command not found</code>, run <code>xcode-select --install</code> again, let it finish, then re-run the <code>clang --version</code> check.</p>
+
+<h2 id="homebrew"><span class="num">4.</span>Install Homebrew <span class="stage">Mac setup</span></h2>
+
+<p>Homebrew is the installer we use to deliver Bidnamic OS.</p>
+
+<ol class="checklist">
+  <li>Open your web browser and go to this link to download the installer:
+    <pre><code>https://github.com/Homebrew/brew/releases/download/5.1.14/Homebrew.pkg</code></pre>
+  </li>
+  <li>Open the downloaded <strong>Homebrew.pkg</strong> file and follow the installer prompts.</li>
+  <li>When asked, enter your <strong>Mac admin password</strong>, then wait for it to finish.</li>
+  <li><strong>Quit and reopen Terminal</strong> once the installer is done (close it if it's open, then open it again).</li>
+</ol>
+
+<p>Check it installed correctly:</p>
+
+<pre><code>brew --version</code></pre>
+
+<p>A Homebrew version number means you're good. If Terminal says <code>brew: command not found</code>, restart your Mac and try the command again.</p>
+
+<h2 id="tailscale"><span class="num">5.</span>Install Tailscale <span class="stage">Mac setup</span></h2>
+
+<p>Tailscale is the secure network that lets Bidnamic OS reach our systems. You'll need it running and signed in.</p>
+
+<ol class="checklist">
+  <li>Open your web browser and go to:
+    <pre><code>https://tailscale.com/download/mac</code></pre>
+  </li>
+  <li>Download the macOS app, open the downloaded file, and follow the installation prompts.</li>
+  <li>Open <strong>Tailscale</strong> from your <strong>Applications</strong> folder.</li>
+  <li>Click <strong>Log in</strong> (or <strong>Sign in</strong>) and sign in using your <strong>work email address</strong>. Follow any browser prompts to complete sign-in.</li>
+  <li>If macOS asks for permission to add VPN configurations, click <strong>Allow</strong>.</li>
+</ol>
+
+<div class="callout">
+  <strong>Account approval.</strong> Your Tailscale account may need approving before it connects. If you sign in and it doesn't connect, <a href="#help">ask for help</a> and we'll approve you.
+</div>
+
+<div class="callout ok">
+  <strong>Mac setup complete.</strong> macOS Tahoe, Xcode Command Line Tools, Homebrew, and Tailscale are now all in place. The rest of this guide gets you connected to Bidnamic OS.
+</div>
+
+<h2 id="accounts"><span class="num">6.</span>Set up your accounts <span class="stage">Connect</span></h2>
+
+<p>Bidnamic OS signs you in through Claude.ai. Sort these out before you try to connect — they each arrive as an email invite.</p>
+
+<ol class="checklist">
+  <li>Accept your <strong>AWS Identity Center</strong> invitation email and set up <strong>2FA</strong> (two-factor authentication) when prompted.</li>
+  <li>Accept your invite to <strong>claude.ai</strong>.</li>
+  <li>Log in to <a href="https://claude.ai">claude.ai</a> and check everything works — you should land in a working chat.</li>
+  <li>Double-check <strong>Tailscale is running and connected</strong> (look for it in the menu bar at the top of your screen). If your account still needs approving, <a href="#help">ask for help</a>.</li>
+</ol>
+
+<h2 id="install"><span class="num">7.</span>Install Bidnamic OS <span class="stage">Connect</span></h2>
+
+<p>Open the <strong>Terminal</strong> app — it's in <em>Applications &rarr; Utilities</em> in the Finder, or press Command&nbsp;+&nbsp;Space and type <em>Terminal</em>. Run these three commands in order, pressing <strong>Enter</strong> after each and letting it finish before the next.</p>
+
+<h4>1 — Add the Bidnamic tap</h4>
+<pre><code>brew tap bidnamic/homebrew-tap</code></pre>
+
+<h4>2 — Install Bidnamic OS</h4>
+<pre><code>brew install bidnamic-os</code></pre>
+
+<h4>3 — Run the post-install step</h4>
+<pre><code>bidnamic-os post-install</code></pre>
+
+<p>That last command finishes wiring everything up. Once it completes, you're ready to connect.</p>
+
+<h2 id="connect"><span class="num">8.</span>Connect for the first time <span class="stage">Connect</span></h2>
+
+<p>Now start Bidnamic OS:</p>
+
+<pre><code>bidnamic-os</code></pre>
+
+<p>The system will start and walk you through a one-time login. Here's what to expect:</p>
+
+<ol class="checklist">
+  <li>When prompted, select <strong>option 1</strong> to log in through Claude.ai.</li>
+  <li>Copy the link it shows you into your web browser.</li>
+  <li>In the browser, click <strong>Authorise</strong>.</li>
+  <li>Copy the <strong>auth code</strong> the browser gives you, paste it back into Terminal, and hit <strong>Enter</strong>.</li>
+  <li>Finish setting your <strong>preferences</strong> when asked.</li>
+</ol>
+
+<div class="callout ok">
+  <strong>You're in.</strong> You should land at the Bidnamic OS chat prompt. Type <em>hello</em> and hit Enter — a reply within a second or two means everything's working. From now on, you just run <code>bidnamic-os</code> to start a session.
+</div>
+
+<footer id="help">
+  Stuck on a step, or something didn't behave as described? Message Rob on Slack and he'll jump on a call and help.
+</footer>
+
+<script>
+  document.querySelectorAll('pre').forEach(function(pre) {
+    var btn = document.createElement('button');
+    btn.className = 'copy-btn';
+    btn.type = 'button';
+    btn.textContent = 'copy';
+    btn.addEventListener('click', function() {
+      var code = pre.querySelector('code');
+      var text = (code ? code.innerText : pre.innerText).replace(/\s*copy\s*$/, '');
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function() {
+          btn.textContent = 'copied';
+          btn.classList.add('copied');
+          setTimeout(function() {
+            btn.textContent = 'copy';
+            btn.classList.remove('copied');
+          }, 1500);
+        }).catch(function() {
+          btn.textContent = 'select it';
+        });
+      } else {
+        btn.textContent = 'select it';
+      }
+    });
+    pre.appendChild(btn);
+  });
+</script>
+
+</body>
+</html>
