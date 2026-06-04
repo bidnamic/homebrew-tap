@@ -215,7 +215,7 @@ Does the 14-day view still support lowering the target?</code></pre>
 
 <h2 id="files"><span class="num">3.</span>The bidnamic-os folder — works both ways</h2>
 
-<p>When you install Bidnamic OS, a folder called <code>bidnamic-os</code> appears in your home folder (open Finder and hit ⇧⌘H, or look under <code>~/bidnamic-os</code>). Drop files into it, pull files out. That's how you share things with the assistant and how it hands things back — anything in that folder, Claude can see.</p>
+<p>When you install Bidnamic OS, a folder called <code>bidnamic-os</code> appears in your home folder (open Finder and hit ⇧⌘H). Drop files into it, pull files out. That's how you share things with the assistant and how it hands things back — anything in that folder, Claude can see.</p>
 
 <h3>Things you drop in</h3>
 <p>Anything you want it to look at:</p>
@@ -273,7 +273,7 @@ in a friendly but firm tone — we can't lower the ROAS target below 2.</code></
 
 <h2 id="things"><span class="num">6.</span>The things you'll do most</h2>
 
-<p>Five core workflows, plus three more that are worth knowing. For each one, the plain-English prompt comes first. If you prefer the shortcut, it's underneath. Both work.</p>
+<p>Four core workflows, plus two more that are worth knowing. For each one, the plain-English prompt comes first. If you prefer the shortcut, it's underneath. Both work.</p>
 
 <div class="workflow">
   <h3>Morning triage <span class="badge">≈ 4–8 min</span></h3>
@@ -298,7 +298,7 @@ worst first, with reasons and a proposed next step for each.</code></pre>
   <p>Use before a call, or when a single client keeps coming up. You'll get outstanding healthchecks, recent captain's log entries, stale goals, recent calls and emails, and key contacts — a one-screen read of what's happening with them right now.</p>
 <pre><code>Give me a quick read on BobsWidgetStore —
 what's going on with them this week?</code></pre>
-  <p class="shortcut">Shortcut: <code>/client:portfolio-review --client_name="BobsWidgetStore"</code></p>
+  <p class="shortcut">Shortcut: <code>/client:portfolio-review give me a quick read on BobsWidgetStore</code></p>
 </div>
 
 <div class="workflow">
@@ -306,21 +306,17 @@ what's going on with them this week?</code></pre>
   <p>When portfolio-review flags something, or a client reports an issue you don't understand yet. The system follows the diagnostics playbook — gathers evidence across healthchecks, performance, config, recent changes — and comes back with a root cause and a recommendation labelled <em>Wait</em>, <em>Act</em>, or <em>Escalate</em>.</p>
 <pre><code>ROAS on BobsWidgetStore has dropped about 25% in the last week.
 Figure out why, and tell me whether to act or wait it out.</code></pre>
-  <p class="shortcut">Shortcut: <code>/client:investigate --client_name="BobsWidgetStore" --issue="ROAS drop 25% in 7 days"</code></p>
+  <p class="shortcut">Shortcut: <code>/client:investigate BobsWidgetStore has a ROAS drop of 25% in 7 days</code></p>
 </div>
 
 <div class="workflow">
-  <h3>Generate a monthly report <span class="badge">≈ 3–6 min</span></h3>
-  <p>Plain English works fine, and the system will save the HTML into the <code>bidnamic-os</code> folder so you can open it, forward it, or keep it.</p>
+  <h3>Build a branded report <span class="badge">≈ 3–6 min</span></h3>
+  <p>When you want a client-ready deliverable with Bidnamic branding applied, or you're starting a new report from scratch. The system builds it and saves the HTML into the <code>bidnamic-os</code> folder so you can open it, forward it, or keep it.</p>
 <pre><code>Build me the monthly Shopping performance report for
 BobsWidgetStore — March 2026 vs March 2025, GB region.
 Save it into the folder.</code></pre>
-  <p class="shortcut">Shortcut: <code>/report:generate reports/shopping-performance-report.yml --client_name="BobsWidgetStore" --region="GB" --date_start="2026-03-01" --date_end="2026-03-31" --comparison_date_start="2025-03-01" --comparison_date_end="2025-03-31"</code></p>
-  <p>Other report specs that are ready to use:</p>
-  <ul>
-    <li><strong>Feed quality assessment</strong> — pre-pitch audit of a prospect's product feed. Great before a first sales call.</li>
-    <li><strong>Feed Optimisation title structure</strong> — which attributes are missing from titles, where the experiment opportunities are.</li>
-  </ul>
+  <p class="shortcut">Shortcut: <code>/report:apply-branding describe the report you want to build</code></p>
+  <p>Use this when you want to ensure Bidnamic branding, or when you're starting a new report.</p>
 </div>
 
 <h3>Two more worth knowing</h3>
@@ -331,7 +327,6 @@ Save it into the folder.</code></pre>
 <pre><code>I'm prepping a Share of Voice conversation with BobsWidgetStore.
 Segment their catalogue by revenue, then tell me which search terms
 are worth tracking and which are waste.</code></pre>
-  <p class="shortcut">Procedure: <code>playbooks/onboarding-sov.md</code></p>
 </div>
 
 <div class="workflow">
@@ -340,7 +335,6 @@ are worth tracking and which are waste.</code></pre>
 <pre><code>I want to know which clients in my portfolio have had their
 merchant-centre disapproval rate go up in the last month,
 and whether that correlates with ROAS drops. We've never asked this before.</code></pre>
-  <p class="shortcut">Shortcut: <code>/development:explore-data</code></p>
 </div>
 
 <h2 id="cheat"><span class="num">7.</span>Plain-English prompts that just work</h2>
@@ -440,6 +434,9 @@ activating, something else — and when did it last change?</code></pre>
   <strong>Quick heuristic.</strong> If you're about to say <em>"actually, forget what I said earlier about Client A, now I want to look at Client B"</em> — that's the moment to <code>/clear</code> instead. Short, focused chats give sharper answers.
 </div>
 
+<h3>Saving a conversation to come back to</h3>
+<p>If you want to save the conversation for future reference, type <code>/rename conversation-name-you-want</code>. The next time, use <code>/resume</code> to find it easily by that name and pick the conversation back up — handy for carrying on with something until the problem is resolved.</p>
+
 <h2 id="stuck"><span class="num">9.</span>When you're stuck</h2>
 
 <ul>
@@ -466,11 +463,6 @@ activating, something else — and when did it last change?</code></pre>
 <details>
   <summary>Dataset</summary>
   <p>A pre-written, pre-tested SQL query that returns a specific set of data (e.g., "recent performance for this client"). Skills use datasets so the numbers are always consistent.</p>
-</details>
-
-<details>
-  <summary>Report</summary>
-  <p>An HTML deliverable built from one or more datasets plus a narrative template. Saved into the <code>bidnamic-os</code> folder in your home folder, ready to forward to a client.</p>
 </details>
 
 <details>
