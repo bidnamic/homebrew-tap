@@ -282,15 +282,18 @@ Thread model: ...</code></pre>
 
 <h2 id="install"><span class="num">7.</span>Install Bidnamic OS <span class="stage">Connect</span></h2>
 
-<p>Open the <strong>Terminal</strong> app — it's in <em>Applications &rarr; Utilities</em> in the Finder, or press Command&nbsp;+&nbsp;Space and type <em>Terminal</em>. Run these three commands in order, pressing <strong>Enter</strong> after each and letting it finish before the next.</p>
+<p>Open the <strong>Terminal</strong> app — it's in <em>Applications &rarr; Utilities</em> in the Finder, or press Command&nbsp;+&nbsp;Space and type <em>Terminal</em>. Run these four commands in order, pressing <strong>Enter</strong> after each and letting it finish before the next.</p>
 
-<h4>1 — Add the Bidnamic tap</h4>
+<h4>1 — Add the AWS tap</h4>
+<pre><code>brew tap aws/aws</code></pre>
+
+<h4>2 — Add the Bidnamic tap</h4>
 <pre><code>brew tap bidnamic/homebrew-tap</code></pre>
 
-<h4>2 — Install Bidnamic OS</h4>
+<h4>3 — Install Bidnamic OS</h4>
 <pre><code>brew install bidnamic-os</code></pre>
 
-<h4>3 — Run the post-install step</h4>
+<h4>4 — Run the post-install step</h4>
 <pre><code>bidnamic-os post-install</code></pre>
 
 <p>That last command finishes wiring everything up. Once it completes, you're ready to connect.</p>
