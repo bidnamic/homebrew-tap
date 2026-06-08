@@ -1059,13 +1059,10 @@ def unmount_efs():
 
 def _unmount_path(path):
     info(f"Unmounting {path}...")
-    result = subprocess.run(
-        ["sudo", "umount", str(path)],
-        stderr=subprocess.DEVNULL,
-    )
+    result = sudo("umount", str(path), check=False)
     if result.returncode != 0:
         error(f"{path} is busy — close any terminals, editors, or Finder windows under that path. Forcing unmount...")
-        subprocess.run(["sudo", "umount", "-f", str(path)])
+        sudo("umount", "-f", str(path))
 
 
 def cmd_connect(session, profile, env):
