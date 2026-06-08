@@ -1062,7 +1062,9 @@ def _unmount_path(path):
     result = sudo("umount", str(path), check=False)
     if result.returncode != 0:
         error(f"{path} is busy — close any terminals, editors, or Finder windows under that path. Forcing unmount...")
-        sudo("umount", "-f", str(path))
+        force_result = sudo("umount", "-f", str(path), check=False)
+        if force_result.returncode != 0:
+            error(f"Forced unmount of {path} failed (exit {force_result.returncode})")
 
 
 def cmd_connect(session, profile, env):
