@@ -1194,11 +1194,13 @@ def _check_post_install_environment():
 def cmd_post_install():
     """Run the one-time setup after `brew install bidnamic-os`.
 
-    Installs the session-manager-plugin cask (formulae can't depend on
-    casks), wipes artefacts from the legacy zip-based installer, then
-    registers the macOS EFS mount helper symlink and the watchdog
-    LaunchAgent — neither of which `brew install` can do unprivileged.
-    Idempotent: re-running is safe and re-asserts the desired state.
+    Wipes artefacts from the legacy zip-based installer, then registers
+    the macOS EFS mount helper symlink and the watchdog LaunchAgent —
+    neither of which `brew install` can do unprivileged. Idempotent:
+    re-running is safe and re-asserts the desired state.
+
+    session-manager-plugin is installed by the formula's post_install,
+    not here.
     """
     if not _check_post_install_environment():
         return 1
