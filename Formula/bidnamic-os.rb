@@ -36,11 +36,13 @@ class BidnamicOs < Formula
   end
 
   def post_install
+    return unless OS.mac?
+
     brew = "#{HOMEBREW_PREFIX}/bin/brew"
-    quiet_system brew, "tap", "aws/tap"
-    quiet_system brew, "trust", "--cask", "aws/tap/session-manager-plugin"
-    unless quiet_system "which", "-s", "session-manager-plugin"
-      system brew, "install", "--cask", "session-manager-plugin"
+    system brew, "tap", "aws/tap"
+    system brew, "trust", "--cask", "aws/tap/session-manager-plugin"
+    unless which("session-manager-plugin")
+      system brew, "install", "--cask", "aws/tap/session-manager-plugin"
     end
   end
 
