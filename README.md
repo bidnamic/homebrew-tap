@@ -19,14 +19,7 @@ Install these before installing `bidnamic-os`:
 
 ## Install
 
-```
-brew tap bidnamic/homebrew-tap
-brew install bidnamic-os
-bidnamic-os post-install
-```
-
-`post-install` is a one-time privileged step that registers the EFS mount
-helper and the watchdog LaunchAgent. It will prompt for your macOS password.
+See [launcher/INSTALL.html](launcher/INSTALL.html) for the full step-by-step guide.
 
 ## Use
 
