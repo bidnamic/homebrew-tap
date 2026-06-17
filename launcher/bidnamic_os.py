@@ -673,7 +673,7 @@ def preflight_checks():
 
     if not shutil.which("session-manager-plugin"):
         errors.append(
-            "AWS Session Manager plugin not found. Install with:\n    brew install --cask session-manager-plugin"
+            "AWS Session Manager plugin not found. Reinstall to fix:\n    brew reinstall bidnamic-os"
         )
 
     if boto3 is None:
@@ -1202,10 +1202,6 @@ def cmd_post_install():
     """
     if not _check_post_install_environment():
         return 1
-
-    if not shutil.which("session-manager-plugin"):
-        info("Installing AWS Session Manager plugin via brew...")
-        subprocess.run(["brew", "install", "--cask", "session-manager-plugin"], check=True)
 
     info("You'll be prompted for your macOS password.")
 
