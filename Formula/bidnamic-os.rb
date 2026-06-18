@@ -10,9 +10,10 @@ class BidnamicOs < Formula
   depends_on "python@3.14"
   depends_on "awscli"
   depends_on "aws/aws/amazon-efs-utils"
-  # session-manager-plugin is a cask (from aws/tap). Homebrew formulae
-  # cannot express cask dependencies, so post_install taps aws/tap and
-  # installs the cask automatically.
+  # session-manager-plugin is a cask. Homebrew formulae can't depend on
+  # casks, and post_install cannot safely invoke brew (process lock).
+  # `bidnamic-os post-install` installs it via `brew install --cask`
+  # after the formula install completes.
 
   def install
     # Brew-managed venv with boto3. amazon-efs-utils maintains its own
@@ -33,17 +34,6 @@ class BidnamicOs < Formula
     end
 
     pkgshare.install "launcher/TUTORIAL.html"
-  end
-
-  def post_install
-    return unless OS.mac?
-
-    brew = "#{HOMEBREW_PREFIX}/bin/brew"
-    system brew, "tap", "aws/tap"
-    system brew, "trust", "--cask", "aws/tap/session-manager-plugin"
-    unless which("session-manager-plugin")
-      system brew, "install", "--cask", "aws/tap/session-manager-plugin"
-    end
   end
 
   def caveats
