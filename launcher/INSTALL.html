@@ -288,11 +288,13 @@ Thread model: ...</code></pre>
 <pre><code>brew tap aws/aws</code></pre>
 
 <h4>2 — Add the Bidnamic tap</h4>
-<pre><code>brew tap bidnamic/tap</code></pre>
+<pre><code>brew tap bidnamic/homebrew-tap</code></pre>
 
 <h4>3 — Trust the formulae</h4>
 <pre><code>brew trust --formula bidnamic/tap/bidnamic-os
 brew trust --formula aws/aws/amazon-efs-utils</code></pre>
+
+<p style="font-size:13px;color:var(--muted);margin:4px 0 0">The trust command uses <code>bidnamic/tap</code> — Homebrew's short name for the <code>bidnamic/homebrew-tap</code> repo above. They refer to the same tap.</p>
 
 <h4>4 — Install Bidnamic OS</h4>
 <pre><code>brew install bidnamic-os</code></pre>
