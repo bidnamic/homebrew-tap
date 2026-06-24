@@ -32,11 +32,16 @@ curl "https://s3.amazonaws.com/session-manager-downloads/plugin/latest/ubuntu_64
   -o session-manager-plugin.deb
 sudo dpkg -i session-manager-plugin.deb && rm session-manager-plugin.deb
 
-# amazon-efs-utils (built from source — not in apt)
-sudo apt-get install -y binutils rustc cargo pkg-config libssl-dev
-git clone https://github.com/aws/efs-utils
+# amazon-efs-utils (built from source — not in apt). Pin to the stunnel-based
+# 1.x line: 2.0+ needs a heavy Rust/CMake/Go AWS-LC-FIPS build.
+sudo apt-get install -y binutils gettext-base stunnel4
+git clone -b v1.36.0 https://github.com/aws/efs-utils
 ( cd efs-utils && ./build-deb.sh && sudo apt-get install -y ./build/amazon-efs-utils*deb )
 rm -rf efs-utils
+
+# efs-utils 1.x reads region only from its config (not the mount option, and
+# IMDS isn't reachable off-EC2). bidnamic-os is always eu-west-1:
+sudo sed -i 's/^#region = .*/region = eu-west-1/' /etc/amazon/efs/efs-utils.conf
 ```
 
 ### Arch

@@ -34,6 +34,11 @@ package() {
   install -Dm644 dist/efs-utils.conf "$pkgdir/etc/amazon/efs/efs-utils.conf"
   install -Dm444 dist/efs-utils.crt  "$pkgdir/etc/amazon/efs/efs-utils.crt"
 
+  # efs-utils 1.x reads the region from this config file only (it ignores the
+  # `region=` mount option and IMDS isn't reachable off-EC2). bidnamic-os is
+  # always eu-west-1, so set it here. See get_target_region() in mount_efs.
+  sed -i 's/^#region = .*/region = eu-west-1/' "$pkgdir/etc/amazon/efs/efs-utils.conf"
+
   install -Dm644 dist/amazon-efs-mount-watchdog.service \
     "$pkgdir/usr/lib/systemd/system/amazon-efs-mount-watchdog.service"
 
