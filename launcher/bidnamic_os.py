@@ -961,22 +961,22 @@ def efs_mount_options(profile, access_point_id, mount_target_ip):
     )
 
 
-def linux_mount_command(filesystem_id, mount_options, mount_point, home):
-    """Privileged `mount -t efs` argv for Linux.
+def linux_mount_command(mount_efs_bin, filesystem_id, mount_options, mount_point, home):
+    """Privileged mount.efs argv for Linux.
 
-    Unlike macOS, the Linux kernel does not strip the environment when
-    dispatching to the mount helper, and the distro amazon-efs-utils ships
-    a mount.efs whose Python already has botocore — so no PATH pinning is
-    needed. HOME is still pinned so botocore expands ~/.aws/config and the
-    SSO token cache to the invoking user, not root's home under sudo.
+    Invoke mount.efs directly rather than going through `mount -t efs`: the
+    mount(8) layer does not reliably pass our pinned environment down to the
+    helper, and the SSO profile lookup needs it — HOME makes the helper's
+    botocore read the invoking user's ~/.aws/config and SSO token cache
+    instead of root's under sudo. This mirrors the macOS invocation; Linux
+    just omits the PATH pin because the distro mount.efs already imports a
+    botocore-capable Python.
     """
     return [
         "sudo",
         "env",
         f"HOME={home}",
-        "mount",
-        "-t",
-        "efs",
+        mount_efs_bin,
         "-o",
         mount_options,
         f"{filesystem_id}:/",
@@ -1102,7 +1102,7 @@ def mount_efs(session, email, profile):
     mount_options = efs_mount_options(profile, access_point_id, mount_target_ip)
     if IS_LINUX:
         mount_cmd = linux_mount_command(
-            filesystem_id, mount_options, LOCAL_MOUNT_PATH, Path.home()
+            shutil.which("mount.efs"), filesystem_id, mount_options, LOCAL_MOUNT_PATH, Path.home()
         )
     else:
         mount_cmd = [

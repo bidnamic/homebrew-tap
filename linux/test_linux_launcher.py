@@ -22,15 +22,18 @@ def test_efs_mount_options():
 
 def test_linux_mount_command():
     opts = b.efs_mount_options("p", "fsap-1", "10.0.0.5")
-    cmd = b.linux_mount_command("fs-abc", opts, Path("/home/u/bidnamic-os"), Path("/home/u"))
-    assert cmd[:7] == ["sudo", "env", "HOME=/home/u", "mount", "-t", "efs", "-o"], cmd
-    assert cmd[7] == opts
-    assert cmd[8] == "fs-abc:/"
-    assert cmd[9] == "/home/u/bidnamic-os"
-    # macOS-only bits must NOT leak into the Linux command.
-    joined = " ".join(cmd)
-    assert "PATH=" not in joined, joined
-    assert "mount.efs" not in joined, joined
+    cmd = b.linux_mount_command(
+        "/usr/bin/mount.efs", "fs-abc", opts, Path("/home/u/bidnamic-os"), Path("/home/u")
+    )
+    # mount.efs invoked directly (not via `mount -t efs`), HOME pinned so the
+    # helper's botocore reads the user's ~/.aws, no macOS PATH pin.
+    assert cmd[:3] == ["sudo", "env", "HOME=/home/u"], cmd
+    assert cmd[3] == "/usr/bin/mount.efs"
+    assert cmd[4:6] == ["-o", opts]
+    assert cmd[6] == "fs-abc:/"
+    assert cmd[7] == "/home/u/bidnamic-os"
+    assert "mount" not in cmd, cmd  # no `mount -t efs` layer
+    assert "PATH=" not in " ".join(cmd)
 
 
 if __name__ == "__main__":
