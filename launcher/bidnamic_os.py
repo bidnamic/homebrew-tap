@@ -947,16 +947,22 @@ def prepare_mount_point(path):
     info(f"Deleted {len(entries)} item(s) from {path}.")
 
 
-def efs_mount_options(profile, access_point_id, mount_target_ip):
+def efs_mount_options(profile, access_point_id, mount_target_ip, include_region=True):
     """Build the amazon-efs-utils mount option string (shared mac/Linux).
 
     tls,iam → encrypted transport + IAM auth against the access point.
     mounttargetip pins the target so DNS is bypassed (Tailscale routes to
     any AZ). soft/timeo=300 keep the file manager responsive on a slow or
     briefly unreachable share — I/O errors instead of an indefinite hang.
+
+    include_region: macOS efs-utils reads the region from this option and
+    strips it before the NFS mount. The pinned 1.x on Linux instead reads
+    region from efs-utils.conf and would leak `region=` straight into the
+    NFS options (mount.nfs4 rejects it), so the Linux caller omits it.
     """
+    region = f"region={REGION}," if include_region else ""
     return (
-        f"tls,iam,region={REGION},awsprofile={profile},"
+        f"tls,iam,{region}awsprofile={profile},"
         f"accesspoint={access_point_id},mounttargetip={mount_target_ip},soft,timeo=300"
     )
 
@@ -1102,7 +1108,9 @@ def mount_efs(session, email, profile):
     # unreachable: soft makes I/O return errors instead of hanging forever, and
     # timeo=300 sets the per-RPC timeout to 30s (timeo is in tenths of a second
     # per the NFS docs).
-    mount_options = efs_mount_options(profile, access_point_id, mount_target_ip)
+    mount_options = efs_mount_options(
+        profile, access_point_id, mount_target_ip, include_region=IS_MAC
+    )
     if IS_LINUX:
         mount_cmd = linux_mount_command(
             shutil.which("mount.efs"), filesystem_id, mount_options, LOCAL_MOUNT_PATH, Path.home()

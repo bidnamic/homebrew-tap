@@ -18,6 +18,11 @@ def test_efs_mount_options():
         "tls,iam,region=eu-west-1,awsprofile=bidnamic-os-live,"
         "accesspoint=fsap-123,mounttargetip=10.0.0.5,soft,timeo=300"
     ), opts
+    # Linux omits region= (1.x leaks it into the NFS opts; region comes from
+    # efs-utils.conf instead).
+    linux_opts = b.efs_mount_options("p", "fsap-1", "10.0.0.5", include_region=False)
+    assert "region=" not in linux_opts, linux_opts
+    assert linux_opts == "tls,iam,awsprofile=p,accesspoint=fsap-1,mounttargetip=10.0.0.5,soft,timeo=300"
 
 
 def test_linux_mount_command():
