@@ -2,6 +2,10 @@
 
 Public Homebrew tap for the Bidnamic OS launcher.
 
+> **On Linux (Debian/Ubuntu or Arch)?** Homebrew isn't the install path —
+> see [linux/README.md](linux/README.md) for prerequisites and a one-line
+> installer. The rest of this page is macOS-only.
+
 ## Prerequisites
 
 Install these before installing `bidnamic-os`:
@@ -60,6 +64,16 @@ bidnamic-os uninstall
 
 This unloads the LaunchAgent, removes the EFS mount helper, unmounts any
 active shares, and removes the brew package.
+
+## Linux (Debian/Arch)
+
+Linux users don't use Homebrew. The same launcher is installed via a thin
+script, with the AWS prerequisites installed by hand per distro. Full
+instructions: [linux/README.md](linux/README.md).
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/bidnamic/homebrew-tap/main/linux/installer.sh | bash
+```
 
 ## Reporting issues
 
