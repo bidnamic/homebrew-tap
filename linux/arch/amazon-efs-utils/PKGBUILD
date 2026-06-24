@@ -1,59 +1,43 @@
 # Maintainer: Bidnamic <barbaros@bidnamic.com>
 #
-# amazon-efs-utils is not in the AUR or the official Arch repos, so we ship
-# this PKGBUILD. It mirrors upstream's build-deb.sh layout, installing the
-# Python mount helper + its sibling packages into /usr/bin (where /sbin
-# points on a usrmerged system, so `mount -t efs` still finds mount.efs),
-# the Rust efs-proxy, the watchdog, config, and the systemd unit.
+# amazon-efs-utils is in neither the AUR nor the official Arch repos, so we
+# ship this PKGBUILD.
+#
+# Pinned to the 1.x line (last release 1.36.0) on purpose: 2.0+ replaced
+# stunnel with a Rust `efs-proxy` that pulls aws-lc-fips-sys and needs a
+# heavy, fragile CMake+Go+Rust FIPS build. The 1.x mount helper is a single
+# self-contained Python script using stunnel for TLS — no compile step — and
+# fully supports our tls/iam/accesspoint/mounttargetip mount. Bump only if a
+# 1.x feature we need lands upstream.
 #
 # Build:  cd linux/arch/amazon-efs-utils && makepkg -si
 #   or:   paru -B linux/arch/amazon-efs-utils
 pkgname=amazon-efs-utils
-pkgver=3.1.3
+pkgver=1.36.0
 pkgrel=1
-pkgdesc="Utilities for Amazon EFS (mount helper, efs-proxy, watchdog)"
-arch=('x86_64' 'aarch64')
+pkgdesc="Utilities for Amazon EFS (stunnel-based mount helper + watchdog)"
+arch=('any')
 url="https://github.com/aws/efs-utils"
 license=('MIT')
-depends=('python' 'python-botocore' 'openssl')
-# efs-proxy depends on aws-lc-fips-sys, which builds AWS-LC FIPS from source:
-# needs cmake + go + perl (perl is in base) alongside the Rust toolchain.
-makedepends=('cargo' 'cmake' 'go' 'perl')
+depends=('python' 'python-botocore' 'stunnel' 'openssl')
 source=("$pkgname-$pkgver.tar.gz::https://github.com/aws/efs-utils/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('37fb2a409d9ab2a1a8f81f78ee508b6f3122ecf2ed0ca632bd667ffe6fa465f3')
-
-build() {
-  cd "efs-utils-$pkgver"
-  cargo build --release --manifest-path src/proxy/Cargo.toml
-}
+sha256sums=('dad30f5a138263b7247cf867e77268e958cc8122f72277e4d3fa4d292f6fe2c7')
 
 package() {
   cd "efs-utils-$pkgver"
 
-  # Mount helper + its sibling Python packages share one dir so the script's
-  # auto-added sys.path entry resolves `import efs_utils_common` / `mount_efs`.
+  # mount.efs is a standalone script. /usr/bin is where /sbin points on a
+  # usrmerged system, so `mount -t efs` still resolves /sbin/mount.efs to it.
   install -Dm755 src/mount_efs/__init__.py "$pkgdir/usr/bin/mount.efs"
-  install -Dm755 src/mount_s3files/__init__.py "$pkgdir/usr/bin/mount.s3files"
-  install -dm755 "$pkgdir/usr/bin/efs_utils_common" "$pkgdir/usr/bin/mount_efs" "$pkgdir/usr/bin/mount_s3files"
-  install -m644 src/efs_utils_common/*.py "$pkgdir/usr/bin/efs_utils_common/"
-  install -m644 src/mount_efs/*.py "$pkgdir/usr/bin/mount_efs/"
-  install -m644 src/mount_s3files/*.py "$pkgdir/usr/bin/mount_s3files/"
-
-  install -Dm755 src/proxy/target/release/efs-proxy "$pkgdir/usr/bin/efs-proxy"
   install -Dm755 src/watchdog/__init__.py "$pkgdir/usr/bin/amazon-efs-mount-watchdog"
 
-  # Config + cert
   install -Dm644 dist/efs-utils.conf "$pkgdir/etc/amazon/efs/efs-utils.conf"
-  install -Dm644 dist/s3files-utils.conf "$pkgdir/etc/amazon/efs/s3files-utils.conf"
-  install -Dm444 dist/efs-utils.crt "$pkgdir/etc/amazon/efs/efs-utils.crt"
+  install -Dm444 dist/efs-utils.crt  "$pkgdir/etc/amazon/efs/efs-utils.crt"
 
-  # systemd watchdog (Arch puts vendor units under /usr/lib)
   install -Dm644 dist/amazon-efs-mount-watchdog.service \
     "$pkgdir/usr/lib/systemd/system/amazon-efs-mount-watchdog.service"
 
-  # Manpages, log dir, license
   install -Dm644 man/mount.efs.8 "$pkgdir/usr/share/man/man8/mount.efs.8"
   install -dm755 "$pkgdir/var/log/amazon/efs"
-  install -Dm644 LICENSE.txt "$pkgdir/usr/share/licenses/$pkgname/LICENSE" 2>/dev/null \
-    || install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 }

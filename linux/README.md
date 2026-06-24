@@ -54,15 +54,15 @@ sudo systemctl enable --now tailscaled && sudo tailscale up
 # Session Manager plugin (AUR)
 paru -S aws-session-manager-plugin          # or: yay -S aws-session-manager-plugin
 
-# amazon-efs-utils — build the bundled PKGBUILD (pulls rust + python-botocore)
+# amazon-efs-utils — build the bundled PKGBUILD (pulls stunnel + python-botocore)
 paru -B linux/arch/amazon-efs-utils         # run from the repo root
 #   no AUR helper? cd linux/arch/amazon-efs-utils && makepkg -si
 sudo systemctl enable --now amazon-efs-mount-watchdog
 ```
 
-`makepkg -si` / `paru -B` install the build and runtime dependencies
-automatically. The PKGBUILD pins efs-utils to a known version; bump `pkgver`
-+ `sha256sums` to upgrade.
+`makepkg -si` / `paru -B` install the runtime dependencies automatically. The
+PKGBUILD pins efs-utils to the stunnel-based 1.x line (no Rust/FIPS build);
+bump `pkgver` + `sha256sums` to upgrade within 1.x.
 
 ### EFS mount watchdog
 
