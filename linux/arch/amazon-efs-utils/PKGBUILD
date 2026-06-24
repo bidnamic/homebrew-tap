@@ -16,7 +16,9 @@ arch=('x86_64' 'aarch64')
 url="https://github.com/aws/efs-utils"
 license=('MIT')
 depends=('python' 'python-botocore' 'openssl')
-makedepends=('cargo')
+# efs-proxy depends on aws-lc-fips-sys, which builds AWS-LC FIPS from source:
+# needs cmake + go + perl (perl is in base) alongside the Rust toolchain.
+makedepends=('cargo' 'cmake' 'go' 'perl')
 source=("$pkgname-$pkgver.tar.gz::https://github.com/aws/efs-utils/archive/refs/tags/v$pkgver.tar.gz")
 sha256sums=('37fb2a409d9ab2a1a8f81f78ee508b6f3122ecf2ed0ca632bd667ffe6fa465f3')
 
