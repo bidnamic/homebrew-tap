@@ -41,27 +41,28 @@ rm -rf efs-utils
 
 ### Arch
 
-All three AWS tools live in the AUR. With an AUR helper:
+The three AWS tools live in three different places: `aws-cli-v2` is in the
+official repos, `aws-session-manager-plugin` is in the AUR, and
+`amazon-efs-utils` is in **neither** — so build it from the PKGBUILD shipped in
+this repo under [arch/amazon-efs-utils](arch/amazon-efs-utils).
 
 ```bash
-sudo pacman -S --needed python curl base-devel git tailscale
+# Base + Tailscale + AWS CLI v2 (all official repos)
+sudo pacman -S --needed python curl base-devel git tailscale aws-cli-v2
 sudo systemctl enable --now tailscaled && sudo tailscale up
 
-yay -S aws-cli-v2 amazon-efs-utils aws-session-manager-plugin
+# Session Manager plugin (AUR)
+paru -S aws-session-manager-plugin          # or: yay -S aws-session-manager-plugin
+
+# amazon-efs-utils — build the bundled PKGBUILD (pulls rust + python-botocore)
+paru -B linux/arch/amazon-efs-utils         # run from the repo root
+#   no AUR helper? cd linux/arch/amazon-efs-utils && makepkg -si
+sudo systemctl enable --now amazon-efs-mount-watchdog
 ```
 
-Without a helper, build each with `makepkg`:
-
-```bash
-sudo pacman -S --needed python curl base-devel git tailscale
-sudo systemctl enable --now tailscaled && sudo tailscale up
-
-for pkg in aws-cli-v2 amazon-efs-utils aws-session-manager-plugin; do
-  git clone "https://aur.archlinux.org/$pkg.git"
-  ( cd "$pkg" && makepkg -si )
-  rm -rf "$pkg"
-done
-```
+`makepkg -si` / `paru -B` install the build and runtime dependencies
+automatically. The PKGBUILD pins efs-utils to a known version; bump `pkgver`
++ `sha256sums` to upgrade.
 
 ### EFS mount watchdog
 
