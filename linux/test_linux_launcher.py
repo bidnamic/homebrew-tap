@@ -26,12 +26,13 @@ def test_linux_mount_command():
         "/usr/bin/mount.efs", "fs-abc", opts, Path("/home/u/bidnamic-os"), Path("/home/u")
     )
     # mount.efs invoked directly (not via `mount -t efs`), HOME pinned so the
-    # helper's botocore reads the user's ~/.aws, no macOS PATH pin.
+    # helper's botocore reads the user's ~/.aws, no macOS PATH pin. Linux
+    # reads fsname/mountpoint as args[1]/args[2], so positionals come before -o.
     assert cmd[:3] == ["sudo", "env", "HOME=/home/u"], cmd
     assert cmd[3] == "/usr/bin/mount.efs"
-    assert cmd[4:6] == ["-o", opts]
-    assert cmd[6] == "fs-abc:/"
-    assert cmd[7] == "/home/u/bidnamic-os"
+    assert cmd[4] == "fs-abc:/"
+    assert cmd[5] == "/home/u/bidnamic-os"
+    assert cmd[6:8] == ["-o", opts]
     assert "mount" not in cmd, cmd  # no `mount -t efs` layer
     assert "PATH=" not in " ".join(cmd)
 

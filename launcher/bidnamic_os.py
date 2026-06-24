@@ -972,15 +972,18 @@ def linux_mount_command(mount_efs_bin, filesystem_id, mount_options, mount_point
     just omits the PATH pin because the distro mount.efs already imports a
     botocore-capable Python.
     """
+    # Linux mount.efs reads the filesystem and mountpoint as args[1]/args[2]
+    # (the mount(8) positional convention), then -o. macOS reads them as the
+    # LAST two args instead — that's why the macOS branch puts -o first.
     return [
         "sudo",
         "env",
         f"HOME={home}",
         mount_efs_bin,
-        "-o",
-        mount_options,
         f"{filesystem_id}:/",
         str(mount_point),
+        "-o",
+        mount_options,
     ]
 
 
