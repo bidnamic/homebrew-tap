@@ -46,6 +46,13 @@ SSO_START_URL = "https://d-936796524a.awsapps.com/start"
 EFS_CREATION_TOKEN = "bidnamic-os"
 LOCAL_MOUNT_PATH = Path.home() / "bidnamic-os"
 
+IS_MAC = platform.system() == "Darwin"
+IS_LINUX = platform.system() == "Linux"
+
+# Re-running the curl|bash installer is how Linux upgrades (no Homebrew).
+# `bidnamic-os upgrade` shells out to this on Linux.
+LINUX_INSTALL_URL = "https://raw.githubusercontent.com/bidnamic/homebrew-tap/main/linux/installer.sh"
+
 # SHARE_DIR is rewritten by the Homebrew formula at install time to point at
 # HOMEBREW_PREFIX/share/bidnamic-os. Source-tree invocations point at the
 # legacy /usr/local path which won't exist — that's by design; the
@@ -617,47 +624,26 @@ def get_aws_cli_major_version():
         return None
 
 
-def preflight_checks():
-    """Verify local dependencies before any AWS sign-in attempt.
+# Where Linux users go to (re)install missing prerequisites.
+LINUX_PREREQS_URL = "https://github.com/bidnamic/homebrew-tap/blob/main/linux/README.md"
 
-    Runs before SSO so a missing dependency fails fast and does not orphan
-    a browser login or ECS task. The launcher is macOS-only — EFS mounting,
-    Homebrew, and Session Manager install guidance all assume Darwin.
-    """
-    if platform.system() != "Darwin":
-        error("bidnamic-os only supports macOS.")
-        sys.exit(1)
 
-    errors = []
-
-    mac_ver = get_macos_version()
-    if mac_ver is None:
-        errors.append("Could not determine macOS version.")
-    elif mac_ver[0] < 26:
-        errors.append(f"macOS Tahoe (26.x) or later required (found {mac_ver[0]}.{mac_ver[1]}).")
-
-    required_dev_major = mac_ver[0] if mac_ver else 26
-    dev_major = get_developer_tools_major_version()
-    if dev_major is None:
-        errors.append("Command Line Tools not found. Install with: xcode-select --install")
-    elif dev_major < required_dev_major:
-        errors.append(
-            f"Command Line Tools {dev_major}.x is too old for macOS "
-            f"{required_dev_major}.x. Reinstall with:\n"
-            "    sudo rm -rf /Library/Developer/CommandLineTools\n"
-            "    sudo xcode-select --install"
-        )
+def _preflight_common(errors):
+    """Dependency checks shared by macOS and Linux. Hints differ per OS."""
+    reinstall = (
+        "brew reinstall bidnamic-os"
+        if IS_MAC
+        else f"see {LINUX_PREREQS_URL}"
+    )
 
     if not efs_utils_installed():
-        errors.append(EFS_UTILS_INSTALL_HINT)
-
-    # Catches the "brew install bidnamic-os was run, but post-install
-    # wasn't" case. Without this, the user would fail later inside
-    # mount_efs after going through SSO setup — annoying and confusing.
-    if not macos_efs_helper_registered():
-        errors.append(
-            "First-time setup hasn't been run. Run:\n    bidnamic-os post-install"
-        )
+        if IS_MAC:
+            errors.append(EFS_UTILS_INSTALL_HINT)
+        else:
+            errors.append(
+                "amazon-efs-utils is not installed (mount.efs not on PATH). "
+                f"Install it: {LINUX_PREREQS_URL}"
+            )
 
     aws_major = get_aws_cli_major_version()
     if aws_major is None:
@@ -672,12 +658,63 @@ def preflight_checks():
         )
 
     if not shutil.which("session-manager-plugin"):
-        errors.append(
-            "AWS Session Manager plugin not found. Install with:\n    brew install --cask session-manager-plugin"
-        )
+        if IS_MAC:
+            errors.append(
+                "AWS Session Manager plugin not found. Install with:\n    brew install --cask session-manager-plugin"
+            )
+        else:
+            errors.append(
+                "AWS Session Manager plugin not found. "
+                f"Install it: {LINUX_PREREQS_URL}"
+            )
 
     if boto3 is None:
-        errors.append("boto3 is not installed. Reinstall with: brew reinstall bidnamic-os")
+        errors.append(f"boto3 is not installed. Reinstall: {reinstall}")
+
+
+def preflight_checks():
+    """Verify local dependencies before any AWS sign-in attempt.
+
+    Runs before SSO so a missing dependency fails fast and does not orphan
+    a browser login or ECS task. Supported on macOS and Linux; the EFS
+    mount, dependency install guidance, and first-run setup differ per OS.
+    """
+    if not (IS_MAC or IS_LINUX):
+        error("bidnamic-os supports macOS and Linux only.")
+        sys.exit(1)
+
+    errors = []
+
+    if IS_MAC:
+        mac_ver = get_macos_version()
+        if mac_ver is None:
+            errors.append("Could not determine macOS version.")
+        elif mac_ver[0] < 26:
+            errors.append(f"macOS Tahoe (26.x) or later required (found {mac_ver[0]}.{mac_ver[1]}).")
+
+        required_dev_major = mac_ver[0] if mac_ver else 26
+        dev_major = get_developer_tools_major_version()
+        if dev_major is None:
+            errors.append("Command Line Tools not found. Install with: xcode-select --install")
+        elif dev_major < required_dev_major:
+            errors.append(
+                f"Command Line Tools {dev_major}.x is too old for macOS "
+                f"{required_dev_major}.x. Reinstall with:\n"
+                "    sudo rm -rf /Library/Developer/CommandLineTools\n"
+                "    sudo xcode-select --install"
+            )
+
+        # Catches the "brew install bidnamic-os was run, but post-install
+        # wasn't" case. Without this, the user would fail later inside
+        # mount_efs after going through SSO setup — annoying and confusing.
+        # Linux needs no post-install (the distro efs-utils package
+        # registers its own mount helper), so this check is macOS-only.
+        if not macos_efs_helper_registered():
+            errors.append(
+                "First-time setup hasn't been run. Run:\n    bidnamic-os post-install"
+            )
+
+    _preflight_common(errors)
 
     if errors:
         for e in errors:
@@ -710,7 +747,26 @@ def get_mount_table():
     filesystems, so a stale or hung NFS mount is still listed instead of
     making the probe itself hang. Returns an empty set if `mount` cannot
     be run or exits non-zero.
+
+    On Linux we read /proc/self/mounts instead: same in-kernel, no-I/O
+    property, and the line format differs from macOS `mount(8)` so the
+    macOS parser can't be reused. Field 2 is the mount point, with spaces
+    et al octal-escaped (\\040 etc.).
     """
+    if IS_LINUX:
+        try:
+            data = Path("/proc/self/mounts").read_text()
+        except OSError:
+            return set()
+        mounts = set()
+        for line in data.splitlines():
+            fields = line.split()
+            if len(fields) >= 2:
+                # ponytail: unicode_escape decodes the \040-style octal
+                # escapes; a literal backslash in the path would mis-decode,
+                # but mount points under $HOME don't contain them.
+                mounts.add(fields[1].encode().decode("unicode_escape"))
+        return mounts
     try:
         result = subprocess.run(
             ["/sbin/mount"],
@@ -891,6 +947,52 @@ def prepare_mount_point(path):
     info(f"Deleted {len(entries)} item(s) from {path}.")
 
 
+def efs_mount_options(profile, access_point_id, mount_target_ip, include_region=True):
+    """Build the amazon-efs-utils mount option string (shared mac/Linux).
+
+    tls,iam → encrypted transport + IAM auth against the access point.
+    mounttargetip pins the target so DNS is bypassed (Tailscale routes to
+    any AZ). soft/timeo=300 keep the file manager responsive on a slow or
+    briefly unreachable share — I/O errors instead of an indefinite hang.
+
+    include_region: macOS efs-utils reads the region from this option and
+    strips it before the NFS mount. The pinned 1.x on Linux instead reads
+    region from efs-utils.conf and would leak `region=` straight into the
+    NFS options (mount.nfs4 rejects it), so the Linux caller omits it.
+    """
+    region = f"region={REGION}," if include_region else ""
+    return (
+        f"tls,iam,{region}awsprofile={profile},"
+        f"accesspoint={access_point_id},mounttargetip={mount_target_ip},soft,timeo=300"
+    )
+
+
+def linux_mount_command(mount_efs_bin, filesystem_id, mount_options, mount_point, home):
+    """Privileged mount.efs argv for Linux.
+
+    Invoke mount.efs directly rather than going through `mount -t efs`: the
+    mount(8) layer does not reliably pass our pinned environment down to the
+    helper, and the SSO profile lookup needs it — HOME makes the helper's
+    botocore read the invoking user's ~/.aws/config and SSO token cache
+    instead of root's under sudo. This mirrors the macOS invocation; Linux
+    just omits the PATH pin because the distro mount.efs already imports a
+    botocore-capable Python.
+    """
+    # Linux mount.efs reads the filesystem and mountpoint as args[1]/args[2]
+    # (the mount(8) positional convention), then -o. macOS reads them as the
+    # LAST two args instead — that's why the macOS branch puts -o first.
+    return [
+        "sudo",
+        "env",
+        f"HOME={home}",
+        mount_efs_bin,
+        f"{filesystem_id}:/",
+        str(mount_point),
+        "-o",
+        mount_options,
+    ]
+
+
 def mount_efs(session, email, profile):
     """Mount the user's EFS access point at LOCAL_MOUNT_PATH.
 
@@ -921,25 +1023,27 @@ def mount_efs(session, email, profile):
         error(f"[step: efs-utils check] {EFS_UTILS_INSTALL_HINT}")
         sys.exit(1)
 
-    libexec_bin = efs_utils_libexec_bin()
-    if libexec_bin is None or not efs_utils_botocore_ok():
-        # The formula's private Python should carry botocore; if it's
-        # missing the install is broken (and SSO profile mounts would fail
-        # with a confusing /var/root/.aws/ error). Reinstalling rebuilds
-        # the libexec venv.
-        error(
-            "[step: efs-utils check] amazon-efs-utils is installed but its "
-            "private Python cannot import botocore. Reinstall with:\n"
-            "    brew reinstall amazon-efs-utils"
-        )
-        sys.exit(1)
+    if IS_MAC:
+        # macOS only: the Homebrew formula installs botocore into a private
+        # venv beside mount.efs. If it's missing the install is broken (SSO
+        # mounts would fail with a confusing /var/root/.aws/ error). The
+        # distro packages on Linux ship a botocore-capable mount.efs, so
+        # this check doesn't apply there.
+        libexec_bin = efs_utils_libexec_bin()
+        if libexec_bin is None or not efs_utils_botocore_ok():
+            error(
+                "[step: efs-utils check] amazon-efs-utils is installed but its "
+                "private Python cannot import botocore. Reinstall with:\n"
+                "    brew reinstall amazon-efs-utils"
+            )
+            sys.exit(1)
 
-    if platform.system() == "Darwin" and not macos_efs_helper_registered():
-        error(
-            "[step: efs helper check] macOS EFS mount helper is not "
-            "registered. Run: bidnamic-os post-install"
-        )
-        sys.exit(1)
+        if not macos_efs_helper_registered():
+            error(
+                "[step: efs helper check] macOS EFS mount helper is not "
+                "registered. Run: bidnamic-os post-install"
+            )
+            sys.exit(1)
 
     info("Discovering EFS filesystem by creation token...")
     filesystem_id = get_filesystem_id(session)
@@ -1004,21 +1108,25 @@ def mount_efs(session, email, profile):
     # unreachable: soft makes I/O return errors instead of hanging forever, and
     # timeo=300 sets the per-RPC timeout to 30s (timeo is in tenths of a second
     # per the NFS docs).
-    mount_options = (
-        f"tls,iam,region={REGION},awsprofile={profile},accesspoint={access_point_id},mounttargetip={mount_target_ip}"
-        ",soft,timeo=300"
+    mount_options = efs_mount_options(
+        profile, access_point_id, mount_target_ip, include_region=IS_MAC
     )
-    mount_cmd = [
-        "sudo",
-        "env",
-        f"HOME={Path.home()}",
-        f"PATH={libexec_bin}:/usr/bin:/bin:/usr/sbin:/sbin",
-        shutil.which("mount.efs"),
-        "-o",
-        mount_options,
-        f"{filesystem_id}:/",
-        str(LOCAL_MOUNT_PATH),
-    ]
+    if IS_LINUX:
+        mount_cmd = linux_mount_command(
+            shutil.which("mount.efs"), filesystem_id, mount_options, LOCAL_MOUNT_PATH, Path.home()
+        )
+    else:
+        mount_cmd = [
+            "sudo",
+            "env",
+            f"HOME={Path.home()}",
+            f"PATH={efs_utils_libexec_bin()}:/usr/bin:/bin:/usr/sbin:/sbin",
+            shutil.which("mount.efs"),
+            "-o",
+            mount_options,
+            f"{filesystem_id}:/",
+            str(LOCAL_MOUNT_PATH),
+        ]
     info(f"Running: {' '.join(mount_cmd)}")
     result = subprocess.run(mount_cmd)
     if result.returncode != 0:
@@ -1027,7 +1135,9 @@ def mount_efs(session, email, profile):
 
     info(f"EFS mounted at {LOCAL_MOUNT_PATH}.")
 
-    disable_spotlight_indexing(LOCAL_MOUNT_PATH)
+    # Spotlight is macOS-only; nothing to disable on Linux.
+    if IS_MAC:
+        disable_spotlight_indexing(LOCAL_MOUNT_PATH)
 
 
 def disable_spotlight_indexing(path):
@@ -1051,7 +1161,7 @@ def disable_spotlight_indexing(path):
 
 def unmount_efs():
     """Unmount the EFS share. Best-effort."""
-    if platform.system() != "Darwin":
+    if not (IS_MAC or IS_LINUX):
         return
     if is_mounted(LOCAL_MOUNT_PATH):
         _unmount_path(LOCAL_MOUNT_PATH)
@@ -1074,7 +1184,7 @@ def cmd_connect(session, profile, env):
 
     # Mount EFS first so a mount failure bails out before we start an
     # ECS task that would otherwise be left running without a local mount.
-    if platform.system() == "Darwin":
+    if IS_MAC or IS_LINUX:
         mount_efs(session, email, profile)
 
     ecs = session.client("ecs")
@@ -1200,6 +1310,16 @@ def cmd_post_install():
     LaunchAgent — neither of which `brew install` can do unprivileged.
     Idempotent: re-running is safe and re-asserts the desired state.
     """
+    if IS_LINUX:
+        # The distro amazon-efs-utils package registers its own mount helper
+        # and systemd watchdog at install time, and prerequisites are
+        # installed by hand (see linux/README.md), so there is no privileged
+        # first-run setup to do. The installer + preflight cover everything.
+        info("No post-install step is needed on Linux. Run `bidnamic-os` to connect.")
+        if TUTORIAL_PATH.exists():
+            webbrowser.open(TUTORIAL_PATH.as_uri())
+        return 0
+
     if not _check_post_install_environment():
         return 1
 
@@ -1253,9 +1373,20 @@ def cmd_upgrade():
     re-exec'ing the freshly installed `bidnamic-os`, not by calling
     cmd_post_install() directly. That guarantees the new setup logic
     runs. execv replaces this process, so nothing returns past it.
+
+    On Linux there is no Homebrew: upgrading means re-running the installer,
+    which fetches the latest release and reinstalls in place. execvp
+    replaces this process so the freshly downloaded installer runs cleanly.
     """
-    if platform.system() != "Darwin":
-        error("upgrade only supports macOS.")
+    if IS_LINUX:
+        if shutil.which("curl") is None:
+            error("curl not found; cannot self-update. Re-run the install command from linux/README.md.")
+            return 1
+        info("Re-running the installer to fetch the latest release...")
+        os.execvp("bash", ["bash", "-c", f"curl -fsSL {LINUX_INSTALL_URL} | bash"])
+
+    if not IS_MAC:
+        error("upgrade supports macOS and Linux only.")
         return 1
 
     brew = shutil.which("brew")
@@ -1296,9 +1427,24 @@ def cmd_uninstall():
     isn't blocked, then exec brew uninstall. The exec replaces this
     process so brew can safely remove the script that's currently
     executing.
+
+    On Linux there is no brew package to remove and no privileged macOS
+    artefacts to reverse: unmount any active share, then delete the files
+    the installer dropped under /usr/local. The distro-managed
+    amazon-efs-utils (helper + watchdog) is left in place — it's a shared
+    package the user installed as a prerequisite.
     """
-    if platform.system() != "Darwin":
-        error("uninstall only supports macOS.")
+    if IS_LINUX:
+        info("Unmounting any active share and removing installed files (sudo)...")
+        unmount_efs()
+        bin_path = Path("/usr/local/bin/bidnamic-os")
+        sudo("rm", "-f", str(bin_path), check=False)
+        sudo("rm", "-rf", str(SHARE_DIR), check=False)
+        info("Removed bidnamic-os. Prerequisites (awscli, efs-utils, etc.) were left installed.")
+        return 0
+
+    if not IS_MAC:
+        error("uninstall supports macOS and Linux only.")
         return 1
 
     info("Reversing post-install setup. You'll be prompted for your macOS password.")

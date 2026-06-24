@@ -1,0 +1,48 @@
+# Maintainer: Bidnamic <barbaros@bidnamic.com>
+#
+# amazon-efs-utils is in neither the AUR nor the official Arch repos, so we
+# ship this PKGBUILD.
+#
+# Pinned to the 1.x line (last release 1.36.0) on purpose: 2.0+ replaced
+# stunnel with a Rust `efs-proxy` that pulls aws-lc-fips-sys and needs a
+# heavy, fragile CMake+Go+Rust FIPS build. The 1.x mount helper is a single
+# self-contained Python script using stunnel for TLS — no compile step — and
+# fully supports our tls/iam/accesspoint/mounttargetip mount. Bump only if a
+# 1.x feature we need lands upstream.
+#
+# Build:  cd linux/arch/amazon-efs-utils && makepkg -si
+#   or:   paru -B linux/arch/amazon-efs-utils
+pkgname=amazon-efs-utils
+pkgver=1.36.0
+pkgrel=1
+pkgdesc="Utilities for Amazon EFS (stunnel-based mount helper + watchdog)"
+arch=('any')
+url="https://github.com/aws/efs-utils"
+license=('MIT')
+depends=('python' 'python-botocore' 'stunnel' 'openssl')
+source=("$pkgname-$pkgver.tar.gz::https://github.com/aws/efs-utils/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('dad30f5a138263b7247cf867e77268e958cc8122f72277e4d3fa4d292f6fe2c7')
+
+package() {
+  cd "efs-utils-$pkgver"
+
+  # mount.efs is a standalone script. /usr/bin is where /sbin points on a
+  # usrmerged system, so `mount -t efs` still resolves /sbin/mount.efs to it.
+  install -Dm755 src/mount_efs/__init__.py "$pkgdir/usr/bin/mount.efs"
+  install -Dm755 src/watchdog/__init__.py "$pkgdir/usr/bin/amazon-efs-mount-watchdog"
+
+  install -Dm644 dist/efs-utils.conf "$pkgdir/etc/amazon/efs/efs-utils.conf"
+  install -Dm444 dist/efs-utils.crt  "$pkgdir/etc/amazon/efs/efs-utils.crt"
+
+  # efs-utils 1.x reads the region from this config file only (it ignores the
+  # `region=` mount option and IMDS isn't reachable off-EC2). bidnamic-os is
+  # always eu-west-1, so set it here. See get_target_region() in mount_efs.
+  sed -i 's/^#region = .*/region = eu-west-1/' "$pkgdir/etc/amazon/efs/efs-utils.conf"
+
+  install -Dm644 dist/amazon-efs-mount-watchdog.service \
+    "$pkgdir/usr/lib/systemd/system/amazon-efs-mount-watchdog.service"
+
+  install -Dm644 man/mount.efs.8 "$pkgdir/usr/share/man/man8/mount.efs.8"
+  install -dm755 "$pkgdir/var/log/amazon/efs"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}
