@@ -7,6 +7,7 @@ import os
 import platform
 import pty
 import select
+import shlex
 import shutil
 import signal
 import struct
@@ -77,15 +78,11 @@ ENVIRONMENTS = {
     "beta": {
         "account_id": "715191048898",
         "cluster": "default-KF7fFm2UPZc",
-        "subnets": ["subnet-0a0099012d66f4e80", "subnet-08e495740630eaf28"],
-        "security_groups": ["sg-0564e16cccc860e3c"],
         "sso_role_name": "BidnamicOSAccess-Beta",
     },
     "live": {
         "account_id": "666005677731",
         "cluster": "default-USrp2B1uSJE",
-        "subnets": ["subnet-0b900e463e20f90d5", "subnet-07a8f2844e05df3a4"],
-        "security_groups": ["sg-06fb97bae07636229"],
         "sso_role_name": "BidnamicOSAccess-Live",
     },
 }
@@ -128,10 +125,6 @@ def get_env_config(env_name):
         missing.append(f"ENVIRONMENTS['{env_name}']['account_id']")
     if not env["cluster"]:
         missing.append(f"ENVIRONMENTS['{env_name}']['cluster']")
-    if not env["subnets"]:
-        missing.append(f"ENVIRONMENTS['{env_name}']['subnets']")
-    if not env["security_groups"]:
-        missing.append(f"ENVIRONMENTS['{env_name}']['security_groups']")
     if missing:
         error(f"Required config not set: {', '.join(missing)}. Edit this script to configure.")
         sys.exit(1)
@@ -223,44 +216,58 @@ def find_running_task(ecs, cluster, email):
             tags = task.get("tags", [])
             service = get_tag(tags, "Service")
             user = get_tag(tags, "User")
+            # Only the service's own task counts. A task left over from the
+            # pre-service run_task era carries the same Service/User tags, so
+            # without this the launcher would exec into an orphan that has no
+            # remote control running in it.
+            if not task.get("startedBy", "").startswith("ecs-svc/"):
+                continue
             if service == SERVICE_TAG and user and user.lower() == email.lower():
                 return task
 
     return None
 
 
-def start_task(ecs, env, email, username):
-    """Start a new bidnamic-os task for the user. Returns task ARN."""
-    task_family = f"{SERVICE_TAG}-{username}"
-    info("Starting your environment...")
+def service_name_for(username):
+    """ECS service name for a user — matches aws_ecs_service.bidnamic_os in Terraform."""
+    return f"{SERVICE_TAG}-{username}"
 
-    response = ecs.run_task(
-        cluster=env["cluster"],
-        taskDefinition=task_family,
-        launchType="FARGATE",
-        enableExecuteCommand=True,
-        networkConfiguration={
-            "awsvpcConfiguration": {
-                "subnets": env["subnets"],
-                "securityGroups": env["security_groups"],
-                "assignPublicIp": "DISABLED",
-            }
-        },
-        tags=[
-            {"key": "User", "value": email},
-            {"key": "Service", "value": SERVICE_TAG},
-            {"key": "EcsExec", "value": "true"},
-        ],
-    )
 
-    tasks = response.get("tasks", [])
-    if not tasks:
-        failures = response.get("failures", [])
-        reasons = [f.get("reason", "unknown") for f in failures]
-        error(f"Failed to start environment: {', '.join(reasons)}")
-        sys.exit(1)
+def scale_service(ecs, cluster, username, desired_count):
+    """Set the user's service desired count, exiting with advice if it's missing."""
+    try:
+        ecs.update_service(
+            cluster=cluster,
+            service=service_name_for(username),
+            desiredCount=desired_count,
+        )
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "ServiceNotFoundException":
+            error(
+                f"No environment found for you ({service_name_for(username)}). "
+                "Has this user been deployed to this environment?"
+            )
+            sys.exit(1)
+        raise
 
-    return tasks[0]["taskArn"]
+
+def wait_for_service_task(ecs, cluster, email, max_wait=180):
+    """Wait for the service to place a task, then for that task to be exec-ready."""
+    info("Waiting for environment to be ready...")
+    waited = 0
+    while waited < max_wait:
+        task = find_running_task(ecs, cluster, email)
+        if task:
+            # list_tasks(desiredStatus=RUNNING) surfaces the task while it is
+            # still PENDING, so hand off to the readiness wait rather than
+            # assuming it can be exec'd into yet.
+            wait_for_task(ecs, cluster, task["taskArn"], max_wait=max_wait - waited)
+            return task["taskArn"]
+        time.sleep(5)
+        waited += 5
+
+    error("Timed out waiting for the environment to start.")
+    sys.exit(1)
 
 
 def wait_for_task(ecs, cluster, task_arn, max_wait=120):
@@ -418,34 +425,78 @@ def exec_with_keepalive(argv):
     return os.waitstatus_to_exitcode(status)
 
 
+def exec_argv(profile, cluster, task_arn, username, command):
+    """Build the `aws ecs execute-command` argv running `command` in the user's task.
+
+    `--interactive` is always passed: it is the only mode ECS Exec supports,
+    regardless of whether we attach a terminal on this side.
+    """
+    return [
+        "aws",
+        "ecs",
+        "execute-command",
+        "--profile",
+        profile,
+        "--cluster",
+        cluster,
+        "--task",
+        task_arn.split("/")[-1],
+        "--container",
+        f"{SERVICE_TAG}-{username}",
+        "--interactive",
+        "--command",
+        command,
+    ]
+
+
+def as_user(username, script):
+    """Wrap `script` so it runs as the user in a login shell inside the container.
+
+    Login shell (`-l`) so the image's profile — PATH to the claude CLI
+    included — is applied, matching what an interactive session gets.
+    """
+    return f"gosu {username} bash -lc {shlex.quote(script)}"
+
+
 def connect_to_task(profile, cluster, task_arn, username):
     """Connect to a running task via ECS Exec (shells out to AWS CLI for interactive session)."""
-    task_id = task_arn.split("/")[-1]
-    container_name = f"{SERVICE_TAG}-{username}"
-
     info("Connecting...")
     # Wrapped in a pty keepalive (see exec_with_keepalive) so a session left
     # idle past SSM's 20-minute timeout isn't dropped. Ctrl-C is handled by the
     # remote shell — in raw mode the 0x03 byte flows through to it rather than
     # killing the launcher — so there is no KeyboardInterrupt to catch here.
     return exec_with_keepalive(
-        [
-            "aws",
-            "ecs",
-            "execute-command",
-            "--profile",
+        exec_argv(
             profile,
-            "--cluster",
             cluster,
-            "--task",
-            task_id,
-            "--container",
-            container_name,
-            "--interactive",
-            "--command",
+            task_arn,
+            username,
             f"gosu {username} /opt/bin/start-bidnamic-os.sh",
-        ]
+        )
     )
+
+
+# ECS Exec does not propagate the remote command's exit status — the AWS CLI
+# exits 0 for any session that connected — so `claude auth status` reports
+# through a sentinel echoed only on success instead.
+CLAUDE_AUTH_SENTINEL = "__BIDNAMIC_CLAUDE_AUTHED__"
+
+
+def claude_authed(profile, cluster, task_arn, username):
+    """Return True if Claude Code is already logged in inside the container."""
+    result = subprocess.run(
+        exec_argv(
+            profile,
+            cluster,
+            task_arn,
+            username,
+            as_user(username, f"claude auth status && echo {CLAUDE_AUTH_SENTINEL}"),
+        ),
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
+    )
+    return CLAUDE_AUTH_SENTINEL in (result.stdout or "")
 
 
 def efs_utils_installed():
@@ -1067,9 +1118,33 @@ def _unmount_path(path):
             error(f"Forced unmount of {path} failed (exit {force_result.returncode})")
 
 
+def ensure_service_running(session, env, email, username):
+    """Return the ARN of the user's running task, scaling the service up if needed.
+
+    Each user has a long-lived ECS service (one task, or none). Terraform seeds
+    live services at desired_count 1 so remote control is always on, and beta
+    at 0 so environments start stopped — so a beta environment, or one the user
+    stopped, has to be scaled up before there is a task to exec into.
+    """
+    ecs = session.client("ecs")
+    cluster = env["cluster"]
+
+    task = find_running_task(ecs, cluster, email)
+    if task:
+        if task["lastStatus"] == "RUNNING":
+            info("Found your running environment.")
+            return task["taskArn"]
+        info("Your environment is starting up...")
+        wait_for_task(ecs, cluster, task["taskArn"])
+        return task["taskArn"]
+
+    info("Starting your environment...")
+    scale_service(ecs, cluster, username, 1)
+    return wait_for_service_task(ecs, cluster, email)
+
+
 def cmd_connect(session, profile, env):
     email, username = get_user_identity(session)
-    cluster = env["cluster"]
     info(f"Hello, {username}.")
 
     # Mount EFS first so a mount failure bails out before we start an
@@ -1077,39 +1152,58 @@ def cmd_connect(session, profile, env):
     if platform.system() == "Darwin":
         mount_efs(session, email, profile)
 
-    ecs = session.client("ecs")
-    task = find_running_task(ecs, cluster, email)
+    task_arn = ensure_service_running(session, env, email, username)
+    return connect_to_task(profile, env["cluster"], task_arn, username)
 
-    if task:
-        task_arn = task["taskArn"]
-        if task["lastStatus"] == "RUNNING":
-            info("Found your running environment.")
-        else:
-            info("Your environment is starting up...")
-            wait_for_task(ecs, cluster, task_arn)
-    else:
-        task_arn = start_task(ecs, env, email, username)
-        wait_for_task(ecs, cluster, task_arn)
 
-    return connect_to_task(profile, cluster, task_arn, username)
+def cmd_auth(session, profile, env):
+    """Run the Claude Code login flow inside the user's environment.
+
+    Skips the EFS mount: the credentials are written to ~/.claude on the
+    container's own EFS access point, so there is no local share to keep in
+    sync and no reason to prompt for a sudo password.
+
+    Starting remote control is not this command's job — the container runs a
+    supervisor (bin/remote-control.sh) that polls for a valid login and starts
+    remote control itself, so logging in here is all that is needed.
+    """
+    email, username = get_user_identity(session)
+    info(f"Hello, {username}.")
+    task_arn = ensure_service_running(session, env, email, username)
+    cluster = env["cluster"]
+
+    info("Checking Claude Code login...")
+    if claude_authed(profile, cluster, task_arn, username):
+        info("Already logged in — remote control is running.")
+        return 0
+
+    info("Not logged in. Starting `claude auth login` — follow the prompts.")
+    exec_with_keepalive(
+        exec_argv(profile, cluster, task_arn, username, as_user(username, "claude auth login"))
+    )
+
+    if not claude_authed(profile, cluster, task_arn, username):
+        error("Claude Code login did not complete. Re-run `bidnamic-os auth`.")
+        return 1
+
+    info("Logged in. Remote control starts within a minute.")
+    return 0
 
 
 def cmd_stop(session, profile, env):
-    email, username = get_user_identity(session)
-    cluster = env["cluster"]
-    ecs = session.client("ecs")
-    task = find_running_task(ecs, cluster, email)
+    """Scale the user's service to zero.
 
-    if task:
-        info("Stopping your environment...")
-        ecs.stop_task(
-            cluster=cluster,
-            task=task["taskArn"],
-            reason="User requested stop",
-        )
-        info("Environment stopped.")
-    else:
-        info("No running environment found.")
+    Stopping the task itself would achieve nothing — the service replaces a
+    stopped task within seconds — so stopping means setting desired count to 0.
+    Terraform ignores desired_count after create, so this is not undone by the
+    next apply.
+    """
+    email, username = get_user_identity(session)
+    ecs = session.client("ecs")
+
+    info("Stopping your environment...")
+    scale_service(ecs, env["cluster"], username, 0)
+    info("Environment stopped. Remote control is offline until you reconnect.")
 
 
 def cmd_unmount(session, profile, env):
@@ -1331,7 +1425,7 @@ def main():
         nargs="?",
         default="connect",
         choices=[
-            "connect", "stop", "status", "unmount", "tutorial",
+            "connect", "auth", "stop", "status", "unmount", "tutorial",
             "version", "post-install", "upgrade", "uninstall",
         ],
         help="Command to run (default: connect)",
@@ -1370,6 +1464,7 @@ def main():
 
     aws_commands = {
         "connect": cmd_connect,
+        "auth": cmd_auth,
         "stop": cmd_stop,
         "status": cmd_status,
         "unmount": cmd_unmount,
