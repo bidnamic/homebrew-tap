@@ -25,6 +25,7 @@ See [launcher/INSTALL.html](launcher/INSTALL.html) for the full step-by-step gui
 
 ```
 bidnamic-os                 # connect to the cloud agent
+bidnamic-os auth            # log Claude Code in so remote control can start
 bidnamic-os tutorial        # open the AM tutorial
 bidnamic-os version         # print the installed version
 bidnamic-os status          # check whether your environment is running
