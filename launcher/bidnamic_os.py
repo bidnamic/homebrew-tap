@@ -252,13 +252,12 @@ def find_running_task(ecs, cluster, email):
             user = get_tag(tags, "User")
             if not (service == SERVICE_TAG and user and user.lower() == email.lower()):
                 continue
-            # A service-owned task is the one to use: it runs the remote
-            # control supervisor. Return the moment one is found.
+            # A service's own task is the one to use: it runs the supervisor.
             if task.get("startedBy", "").startswith("ecs-svc/"):
                 return task
-            # Otherwise remember a standalone task from the run_task path.
-            # During the migration that may be the only environment the user
-            # has, and connecting to it beats starting a second one.
+            # Otherwise keep a standalone task in mind. Mid-migration it may
+            # be the user's only environment, and using it beats starting a
+            # second one.
             standalone = standalone or task
 
     return standalone
@@ -270,15 +269,12 @@ def service_name_for(username):
 
 
 def find_service(ecs, cluster, username):
-    """Return the user's ACTIVE ECS service, or None to mean "use run_task".
+    """Return the user's ACTIVE service, or None to mean "use run_task".
 
-    None covers every reason a service might not be usable, and they all lead
-    to the same fallback: it has not been deployed yet, it exists but is
-    draining or INACTIVE, or the caller's SSO permission set predates the
-    migration and cannot describe services at all. That last case is why
-    AccessDenied is swallowed rather than raised — a launcher released ahead of
-    the infrastructure change has to keep working against the old permission
-    set.
+    None covers every reason a service might be unusable, and all of them lead
+    to the same fallback: not deployed yet, INACTIVE, or a permission set that
+    cannot describe services. AccessDenied is swallowed for that last case, so
+    a launcher released before the infrastructure change still works.
     """
     try:
         response = ecs.describe_services(
@@ -298,11 +294,10 @@ def find_service(ecs, cluster, username):
 def start_task(ecs, env, email, username):
     """Start a standalone task with run_task. Returns its ARN.
 
-    The pre-service way to start an environment, kept so this launcher works
-    before the services are deployed. Once the permission set drops
-    ecs:RunTask this fails with AccessDenied, which is the intended end state:
-    by then every environment is a service, and a standalone task would be
-    owned by nothing and never stopped.
+    The old way to start an environment, kept so this launcher works before
+    the services exist. Once the permission set drops ecs:RunTask this fails
+    with AccessDenied, which is the intended end state: a standalone task
+    would be owned by nothing and never stopped.
     """
     info("Starting your environment...")
     response = ecs.run_task(
@@ -565,10 +560,9 @@ def connect_to_task(profile, cluster, task_arn, username):
     # idle past SSM's 20-minute timeout isn't dropped. Ctrl-C is handled by the
     # remote shell — in raw mode the 0x03 byte flows through to it rather than
     # killing the launcher — so there is no KeyboardInterrupt to catch here.
-    # `claude` directly: the permission mode now comes from
-    # managed-settings.json in the image and the persona from
-    # .claude/rules/persona.md, so the start-bidnamic-os.sh wrapper that used
-    # to carry those flags is gone.
+    # `claude` directly: the image now carries the permission mode
+    # (managed-settings.json) and the persona (.claude/rules/persona.md), so
+    # the old wrapper had nothing left to add.
     return exec_with_keepalive(
         exec_argv(profile, cluster, task_arn, username, as_user(username, "claude"))
     )
@@ -607,12 +601,11 @@ REMOTE_CONTROL_CHECK = (
 
 
 def remote_control_running(profile, cluster, task_arn, username):
-    """True if the container's supervisor already has remote control up.
+    """Whether the container's supervisor already has remote control up.
 
-    Worth checking rather than assuming: until the task definition points at
-    the supervisor, a task still runs the old `sleep infinity` command and no
-    login will start anything. Reporting that honestly beats telling the user
-    to expect remote control that is never coming.
+    Worth checking: until the task definition points at the supervisor, a task
+    runs the old `sleep infinity` and no login starts anything. Better to say
+    so than promise remote control that is not coming.
     """
     result = subprocess.run(
         exec_argv(
@@ -1247,12 +1240,9 @@ def _unmount_path(path):
 def ensure_environment_running(session, env, email, username):
     """Return the ARN of the user's running task, starting it if needed.
 
-    Prefers the user's ECS service: each user has a long-lived service holding
-    one task or none (Terraform seeds live at 1 so remote control is always on,
-    beta at 0 so environments start stopped), and scaling it to one is how an
-    environment starts. Where no service is visible it falls back to run_task,
-    so this launcher works both before and after the services are deployed and
-    switches over on its own when they appear.
+    Prefers the user's service, scaling it to one task. Where no service is
+    visible it falls back to run_task, so this launcher works before and after
+    the services are deployed and switches over on its own.
     """
     ecs = session.client("ecs")
     cluster = env["cluster"]
@@ -1273,8 +1263,8 @@ def ensure_environment_running(session, env, email, username):
             scale_service(ecs, cluster, username, 1)
         return wait_for_service_task(ecs, cluster, email)
 
-    # Says so out loud: on this path there is no supervisor, so remote control
-    # will not be running, and it should be obvious why rather than puzzling.
+    # Said out loud: on this path there is no supervisor, so remote control
+    # will not be running and the reason should be obvious.
     info("No environment service yet — starting a standalone task.")
     info("Upgrade when you can: `bidnamic-os upgrade`.")
     task_arn = start_task(ecs, env, email, username)
@@ -1298,13 +1288,10 @@ def cmd_connect(session, profile, env):
 def cmd_auth(session, profile, env):
     """Run the Claude Code login flow inside the user's environment.
 
-    Skips the EFS mount: the credentials are written to ~/.claude on the
-    container's own EFS access point, so there is no local share to keep in
-    sync and no reason to prompt for a sudo password.
-
-    Starting remote control is not this command's job — the container runs a
-    supervisor (bin/remote-control.sh) that polls for a valid login and starts
-    remote control itself, so logging in here is all that is needed.
+    Skips the EFS mount: credentials go to ~/.claude on the container's own
+    access point, so there is no local share to sync and no reason to ask for
+    a sudo password. The container's supervisor starts remote control once it
+    sees the login, so logging in is all this has to do.
     """
     email, username = get_user_identity(session)
     info(f"Hello, {username}.")
@@ -1337,12 +1324,10 @@ def cmd_auth(session, profile, env):
 
 
 def cmd_stop(session, profile, env):
-    """Scale the user's service to zero.
+    """Scale the user's service to zero, or stop the task if there is none.
 
-    Stopping the task itself would achieve nothing — the service replaces a
-    stopped task within seconds — so stopping means setting desired count to 0.
-    Terraform ignores desired_count after create, so this is not undone by the
-    next apply.
+    Stopping a service's task achieves nothing: it is replaced within seconds.
+    Terraform ignores desired_count after create, so this survives an apply.
     """
     email, username = get_user_identity(session)
     ecs = session.client("ecs")
