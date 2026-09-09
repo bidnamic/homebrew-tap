@@ -240,6 +240,20 @@ def test_stop_also_stops_a_standalone_task_alongside_a_service():
     assert ecs.stopped and ecs.stopped[0]["task"] == ARGS[2]
 
 
+def test_stop_scales_when_describe_is_denied_but_a_service_task_runs():
+    # The migration window: services exist and are running, but the permission
+    # set has not been updated so DescribeServices is denied. Stop must still
+    # scale, not report "no running environment" and do nothing.
+    ecs = FakeEcs(denied=True)
+    task = {"taskArn": ARGS[2], "lastStatus": "RUNNING", "startedBy": "ecs-svc/1"}
+    with mock.patch.object(b, "get_user_identity", return_value=IDENTITY), mock.patch.object(
+        b, "find_running_task", return_value=task
+    ):
+        b.cmd_stop(ecs, "profile", ENV)
+    assert ecs.updates and ecs.updates[0]["desiredCount"] == 0
+    assert ecs.stopped == [], "a service's own task is left to the service"
+
+
 def test_stop_leaves_a_service_owned_task_to_the_service():
     ecs = FakeEcs(services=ACTIVE_RUNNING)
     task = {"taskArn": ARGS[2], "lastStatus": "RUNNING", "startedBy": "ecs-svc/1"}

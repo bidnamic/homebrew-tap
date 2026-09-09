@@ -287,6 +287,8 @@ def find_service(ecs, cluster, username):
         )
     except ClientError as e:
         if e.response["Error"]["Code"] in ("AccessDeniedException", "AccessDenied"):
+            info("Can't see environment services yet — the permission set update is")
+            info("still pending, so falling back to the old behaviour.")
             return None
         raise
 
@@ -343,11 +345,16 @@ def scale_service(ecs, cluster, username, desired_count):
             desiredCount=desired_count,
         )
     except ClientError as e:
-        if e.response["Error"]["Code"] == "ServiceNotFoundException":
+        code = e.response["Error"]["Code"]
+        if code == "ServiceNotFoundException":
             error(
                 f"No environment found for you ({service_name_for(username)}). "
                 "Has this user been deployed to this environment?"
             )
+            sys.exit(1)
+        if code in ("AccessDeniedException", "AccessDenied"):
+            error("Not allowed to scale your environment yet — the permission set")
+            error("update is still pending. Try again once it has been applied.")
             sys.exit(1)
         raise
 
@@ -566,9 +573,6 @@ def connect_to_task(profile, cluster, task_arn, username):
     # idle past SSM's 20-minute timeout isn't dropped. Ctrl-C is handled by the
     # remote shell — in raw mode the 0x03 byte flows through to it rather than
     # killing the launcher — so there is no KeyboardInterrupt to catch here.
-    # `claude` directly: the image now carries the permission mode
-    # (managed-settings.json) and the persona (.claude/rules/persona.md), so
-    # the old wrapper had nothing left to add.
     return exec_with_keepalive(
         exec_argv(profile, cluster, task_arn, username, as_user(username, "claude"))
     )
@@ -1312,16 +1316,19 @@ def cmd_stop(session, profile, env):
     ecs = session.client("ecs")
     cluster = env["cluster"]
 
-    service = find_service(ecs, cluster, username)
     task = find_running_task(ecs, cluster, email)
+    service = find_service(ecs, cluster, username)
     standalone = task is not None and not service_owned(task)
+    # A service-owned task proves there is a service even when we cannot
+    # describe one, which is what happens before the permission set is updated.
+    has_service = service is not None or (task is not None and service_owned(task))
 
-    if service is None and not standalone:
+    if not has_service and not standalone:
         info("No running environment found.")
         return
 
     info("Stopping your environment...")
-    if service is not None:
+    if has_service:
         scale_service(ecs, cluster, username, 0)
     if standalone:
         # Owned by no service, so scaling to zero would leave it running.
