@@ -297,17 +297,17 @@ def find_service(ecs, cluster, username):
 
 
 def start_task(ecs, env, email, username):
-    """Start a standalone task with run_task. Returns its ARN.
+    """Start a new bidnamic-os task for the user. Returns task ARN.
 
-    The old way to start an environment, kept so this launcher works before
-    the services exist. Once the permission set drops ecs:RunTask this fails
-    with AccessDenied, which is the intended end state: a standalone task
-    would be owned by nothing and never stopped.
+    The fallback for a user with no service yet. Removing it is tracked in
+    bidnamic/infrastructure#732.
     """
+    task_family = f"{SERVICE_TAG}-{username}"
     info("Starting your environment...")
+
     response = ecs.run_task(
         cluster=env["cluster"],
-        taskDefinition=f"{SERVICE_TAG}-{username}",
+        taskDefinition=task_family,
         launchType="FARGATE",
         enableExecuteCommand=True,
         networkConfiguration={
@@ -326,7 +326,8 @@ def start_task(ecs, env, email, username):
 
     tasks = response.get("tasks", [])
     if not tasks:
-        reasons = [f.get("reason", "unknown") for f in response.get("failures", [])]
+        failures = response.get("failures", [])
+        reasons = [f.get("reason", "unknown") for f in failures]
         error(f"Failed to start environment: {', '.join(reasons)}")
         sys.exit(1)
 
@@ -574,54 +575,26 @@ def connect_to_task(profile, cluster, task_arn, username):
 
 
 # ECS Exec does not propagate the remote command's exit status — the AWS CLI
-# exits 0 for any session that connected — so these checks report by echoing a
+# exits 0 for any session that connected — so the check reports by echoing a
 # sentinel that only runs on success.
 CLAUDE_AUTH_SENTINEL = "__BIDNAMIC_CLAUDE_AUTHED__"
-REMOTE_CONTROL_SENTINEL = "__BIDNAMIC_REMOTE_CONTROL_RUNNING__"
 
 
-def container_check(profile, cluster, task_arn, username, command, sentinel):
-    """Run `command` in the container; True if it succeeded."""
+def claude_authed(profile, cluster, task_arn, username):
+    """Whether Claude Code is already logged in inside the container."""
     result = subprocess.run(
         exec_argv(
             profile,
             cluster,
             task_arn,
             username,
-            as_user(username, f"{command} && echo {sentinel}"),
+            as_user(username, f"claude auth status && echo {CLAUDE_AUTH_SENTINEL}"),
         ),
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
     )
-    return sentinel in (result.stdout or "")
-
-
-def claude_authed(profile, cluster, task_arn, username):
-    """Whether Claude Code is already logged in inside the container."""
-    return container_check(
-        profile, cluster, task_arn, username, "claude auth status", CLAUDE_AUTH_SENTINEL
-    )
-
-
-def remote_control_running(profile, cluster, task_arn, username):
-    """Whether the container's supervisor already has remote control up.
-
-    Until the task definition points at the supervisor a task runs the old
-    `sleep infinity`, and no login starts anything. Better to say so than
-    promise remote control that is not coming.
-
-    The pattern is bracketed so it cannot match the `bash -lc` wrapper, whose
-    command line contains this very command.
-    """
-    return container_check(
-        profile,
-        cluster,
-        task_arn,
-        username,
-        "pgrep -f 'claude remote[-]control' >/dev/null",
-        REMOTE_CONTROL_SENTINEL,
-    )
+    return CLAUDE_AUTH_SENTINEL in (result.stdout or "")
 
 
 def efs_utils_installed():
@@ -1325,10 +1298,7 @@ def cmd_auth(session, profile, env):
             return 1
         info("Logged in.")
 
-    if remote_control_running(profile, cluster, task_arn, username):
-        info("Remote control is running — connect from claude.ai/code or the Claude app.")
-    else:
-        info("Remote control is not running yet; it starts within a minute. Login saved.")
+    info("Remote control starts on its own; connect from claude.ai/code or the Claude app.")
     return 0
 
 
