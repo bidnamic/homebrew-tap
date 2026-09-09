@@ -92,6 +92,18 @@ class FakeEcs:
     def stop_task(self, **kwargs):
         self.stopped.append(kwargs)
 
+    def get_paginator(self, _name):
+        outer = self
+
+        class Paginator:
+            def paginate(self, **kwargs):
+                return [{"taskArns": [t["taskArn"] for t in outer.tasks]}]
+
+        return Paginator()
+
+    def describe_tasks(self, **kwargs):
+        return {"tasks": self.tasks}
+
 
 ACTIVE_STOPPED = [{"status": "ACTIVE", "desiredCount": 0}]
 ACTIVE_RUNNING = [{"status": "ACTIVE", "desiredCount": 1}]
@@ -210,9 +222,49 @@ def test_stop_scales_the_service_to_zero():
     assert ecs.stopped == []
 
 
+def test_as_user_quotes_the_username():
+    # It comes from an email local part, so it is not ours to assume is safe.
+    assert b.as_user("odd name", "echo hi") == "gosu 'odd name' bash -lc 'echo hi'"
+
+
+def test_stop_also_stops_a_standalone_task_alongside_a_service():
+    # A standalone task is owned by no service, so scaling to zero leaves it
+    # running. Mid-migration a user can have both.
+    ecs = FakeEcs(services=ACTIVE_RUNNING)
+    task = {"taskArn": ARGS[2], "lastStatus": "RUNNING", "startedBy": "rob"}
+    with mock.patch.object(b, "get_user_identity", return_value=IDENTITY), mock.patch.object(
+        b, "find_running_task", return_value=task
+    ):
+        b.cmd_stop(ecs, "profile", ENV)
+    assert ecs.updates and ecs.updates[0]["desiredCount"] == 0
+    assert ecs.stopped and ecs.stopped[0]["task"] == ARGS[2]
+
+
+def test_stop_leaves_a_service_owned_task_to_the_service():
+    ecs = FakeEcs(services=ACTIVE_RUNNING)
+    task = {"taskArn": ARGS[2], "lastStatus": "RUNNING", "startedBy": "ecs-svc/1"}
+    with mock.patch.object(b, "get_user_identity", return_value=IDENTITY), mock.patch.object(
+        b, "find_running_task", return_value=task
+    ):
+        b.cmd_stop(ecs, "profile", ENV)
+    assert ecs.stopped == [], "scaling to zero is enough for a service's own task"
+
+
+def test_auth_reports_a_failed_exec_session_distinctly():
+    # A session that never connected is not the same as an unfinished login.
+    authed = mock.Mock(return_value=False)
+    with mock.patch.object(b, "get_user_identity", return_value=IDENTITY), mock.patch.object(
+        b, "ensure_environment_running", return_value=ARGS[2]
+    ), mock.patch.object(b, "claude_authed", authed), mock.patch.object(
+        b, "exec_with_keepalive", return_value=255
+    ):
+        assert b.cmd_auth(mock.Mock(), "profile", ENV) == 1
+    assert authed.call_count == 1, "must not re-check auth after a failed session"
+
+
 def test_stop_stops_the_task_when_there_is_no_service():
     ecs = FakeEcs(services=[])
-    task = {"taskArn": ARGS[2], "lastStatus": "RUNNING"}
+    task = {"taskArn": ARGS[2], "lastStatus": "RUNNING", "startedBy": "rob"}
     with mock.patch.object(b, "get_user_identity", return_value=IDENTITY), mock.patch.object(
         b, "find_running_task", return_value=task
     ):
