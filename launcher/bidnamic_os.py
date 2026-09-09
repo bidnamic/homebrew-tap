@@ -274,12 +274,12 @@ def service_name_for(username):
 
 
 def find_service(ecs, cluster, username):
-    """Return the user's ACTIVE service, or None to mean "use run_task".
+    """Return the user's ACTIVE service, or None if we cannot see one.
 
-    None covers every reason a service might be unusable, and all of them lead
-    to the same fallback: not deployed yet, INACTIVE, or a permission set that
-    cannot describe services. AccessDenied is swallowed for that last case, so
-    a launcher released before the infrastructure change still works.
+    None means "not deployed yet", "INACTIVE", or "not allowed to look". The
+    last case is why AccessDenied is swallowed: a launcher released before the
+    permission set is updated has to keep working. Callers decide what None
+    means for them — connect falls back to run_task, stop does not.
     """
     try:
         response = ecs.describe_services(
@@ -287,8 +287,10 @@ def find_service(ecs, cluster, username):
         )
     except ClientError as e:
         if e.response["Error"]["Code"] in ("AccessDeniedException", "AccessDenied"):
-            info("Can't see environment services yet — the permission set update is")
-            info("still pending, so falling back to the old behaviour.")
+            # Says what it saw, not what happens next: the callers differ.
+            # connect falls back to run_task, stop still scales if a
+            # service-owned task proves there is a service.
+            info("Can't see environment services yet — permission set update pending.")
             return None
         raise
 
