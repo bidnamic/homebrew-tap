@@ -253,7 +253,7 @@ def find_running_task(ecs, cluster, email):
             if not (service == SERVICE_TAG and user and user.lower() == email.lower()):
                 continue
             # A service's own task is the one to use: it runs the supervisor.
-            if task.get("startedBy", "").startswith("ecs-svc/"):
+            if service_owned(task):
                 return task
             # Otherwise keep a standalone task in mind. Mid-migration it may
             # be the user's only environment, and using it beats starting a
@@ -261,6 +261,11 @@ def find_running_task(ecs, cluster, email):
             standalone = standalone or task
 
     return standalone
+
+
+def service_owned(task):
+    """Whether a task was launched by its ECS service rather than by run_task."""
+    return task.get("startedBy", "").startswith("ecs-svc/")
 
 
 def service_name_for(username):
@@ -569,53 +574,54 @@ def connect_to_task(profile, cluster, task_arn, username):
 
 
 # ECS Exec does not propagate the remote command's exit status — the AWS CLI
-# exits 0 for any session that connected — so `claude auth status` reports
-# through a sentinel echoed only on success instead.
+# exits 0 for any session that connected — so these checks report by echoing a
+# sentinel that only runs on success.
 CLAUDE_AUTH_SENTINEL = "__BIDNAMIC_CLAUDE_AUTHED__"
+REMOTE_CONTROL_SENTINEL = "__BIDNAMIC_REMOTE_CONTROL_RUNNING__"
 
 
-def claude_authed(profile, cluster, task_arn, username):
-    """Return True if Claude Code is already logged in inside the container."""
+def container_check(profile, cluster, task_arn, username, command, sentinel):
+    """Run `command` in the container; True if it succeeded."""
     result = subprocess.run(
         exec_argv(
             profile,
             cluster,
             task_arn,
             username,
-            as_user(username, f"claude auth status && echo {CLAUDE_AUTH_SENTINEL}"),
+            as_user(username, f"{command} && echo {sentinel}"),
         ),
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
     )
-    return CLAUDE_AUTH_SENTINEL in (result.stdout or "")
+    return sentinel in (result.stdout or "")
 
 
-# Bracketed so the pattern cannot match the `bash -lc` wrapper, whose command
-# line contains this very command.
-REMOTE_CONTROL_RUNNING_SENTINEL = "__BIDNAMIC_REMOTE_CONTROL_RUNNING__"
-REMOTE_CONTROL_CHECK = (
-    "pgrep -f 'claude remote[-]control' >/dev/null && "
-    f"echo {REMOTE_CONTROL_RUNNING_SENTINEL}"
-)
+def claude_authed(profile, cluster, task_arn, username):
+    """Whether Claude Code is already logged in inside the container."""
+    return container_check(
+        profile, cluster, task_arn, username, "claude auth status", CLAUDE_AUTH_SENTINEL
+    )
 
 
 def remote_control_running(profile, cluster, task_arn, username):
     """Whether the container's supervisor already has remote control up.
 
-    Worth checking: until the task definition points at the supervisor, a task
-    runs the old `sleep infinity` and no login starts anything. Better to say
-    so than promise remote control that is not coming.
+    Until the task definition points at the supervisor a task runs the old
+    `sleep infinity`, and no login starts anything. Better to say so than
+    promise remote control that is not coming.
+
+    The pattern is bracketed so it cannot match the `bash -lc` wrapper, whose
+    command line contains this very command.
     """
-    result = subprocess.run(
-        exec_argv(
-            profile, cluster, task_arn, username, as_user(username, REMOTE_CONTROL_CHECK)
-        ),
-        capture_output=True,
-        text=True,
-        stdin=subprocess.DEVNULL,
+    return container_check(
+        profile,
+        cluster,
+        task_arn,
+        username,
+        "pgrep -f 'claude remote[-]control' >/dev/null",
+        REMOTE_CONTROL_SENTINEL,
     )
-    return REMOTE_CONTROL_RUNNING_SENTINEL in (result.stdout or "")
 
 
 def efs_utils_installed():
@@ -1251,11 +1257,10 @@ def ensure_environment_running(session, env, email, username):
     task = find_running_task(ecs, cluster, email)
 
     if task:
-        if service and not task.get("startedBy", "").startswith("ecs-svc/"):
-            # Usable, but nothing supervises it, so remote control is not
-            # running. Better to say so than leave the user wondering.
-            info("This is a leftover task, not your service, so remote control is off.")
-            info("Run `bidnamic-os stop` and reconnect to move onto the service.")
+        if service and not service_owned(task):
+            # Usable, but nothing supervises it, so remote control is off.
+            info("Leftover task, not your service — remote control is off.")
+            info("Run `bidnamic-os stop`, then reconnect, to move onto the service.")
         if task["lastStatus"] == "RUNNING":
             info("Found your running environment.")
             return task["taskArn"]
@@ -1269,8 +1274,7 @@ def ensure_environment_running(session, env, email, username):
             scale_service(ecs, cluster, username, 1)
         return wait_for_service_task(ecs, cluster, email)
 
-    # Said out loud: on this path there is no supervisor, so remote control
-    # will not be running and the reason should be obvious.
+    # No supervisor on this path, so say why remote control will be off.
     info("No environment service yet — starting a standalone task.")
     info("Upgrade when you can: `bidnamic-os upgrade`.")
     task_arn = start_task(ecs, env, email, username)
@@ -1292,43 +1296,39 @@ def cmd_connect(session, profile, env):
 
 
 def cmd_auth(session, profile, env):
-    """Run the Claude Code login flow inside the user's environment.
+    """Log Claude Code in inside the user's environment.
 
     Skips the EFS mount: credentials go to ~/.claude on the container's own
-    access point, so there is no local share to sync and no reason to ask for
-    a sudo password. The container's supervisor starts remote control once it
-    sees the login, so logging in is all this has to do.
+    access point, so there is no local share to sync and no sudo password to
+    ask for. The container's supervisor starts remote control once it sees the
+    login, so logging in is all this does.
     """
     email, username = get_user_identity(session)
     info(f"Hello, {username}.")
-    task_arn = ensure_environment_running(session, env, email, username)
     cluster = env["cluster"]
+    task_arn = ensure_environment_running(session, env, email, username)
 
-    info("Checking Claude Code login...")
-    if not claude_authed(profile, cluster, task_arn, username):
-        info("Not logged in. Starting `claude auth login` — follow the prompts.")
+    if claude_authed(profile, cluster, task_arn, username):
+        info("Already logged in.")
+    else:
+        info("Starting `claude auth login` — follow the prompts.")
         code = exec_with_keepalive(
             exec_argv(
                 profile, cluster, task_arn, username, as_user(username, "claude auth login")
             )
         )
         if code != 0:
-            error(f"The login session ended early (exit {code}). Re-run `bidnamic-os auth`.")
+            error(f"The login session ended early (exit {code}). Try again.")
             return 1
         if not claude_authed(profile, cluster, task_arn, username):
-            error("Claude Code login did not complete. Re-run `bidnamic-os auth`.")
+            error("Login did not complete. Re-run `bidnamic-os auth`.")
             return 1
         info("Logged in.")
-    else:
-        info("Already logged in.")
 
     if remote_control_running(profile, cluster, task_arn, username):
         info("Remote control is running — connect from claude.ai/code or the Claude app.")
     else:
-        info(
-            "Remote control is not running yet. It starts within a minute once your "
-            "environment is on the new image; your login is saved either way."
-        )
+        info("Remote control is not running yet; it starts within a minute. Login saved.")
     return 0
 
 
@@ -1344,7 +1344,7 @@ def cmd_stop(session, profile, env):
 
     service = find_service(ecs, cluster, username)
     task = find_running_task(ecs, cluster, email)
-    standalone = task is not None and not task.get("startedBy", "").startswith("ecs-svc/")
+    standalone = task is not None and not service_owned(task)
 
     if service is None and not standalone:
         info("No running environment found.")
