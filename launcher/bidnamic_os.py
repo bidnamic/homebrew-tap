@@ -465,14 +465,12 @@ def connect_to_task(profile, cluster, task_arn, username):
     # idle past SSM's 20-minute timeout isn't dropped. Ctrl-C is handled by the
     # remote shell — in raw mode the 0x03 byte flows through to it rather than
     # killing the launcher — so there is no KeyboardInterrupt to catch here.
+    # `claude` directly: the permission mode now comes from
+    # managed-settings.json in the image and the persona from
+    # .claude/rules/persona.md, so the start-bidnamic-os.sh wrapper that used
+    # to carry those flags is gone.
     return exec_with_keepalive(
-        exec_argv(
-            profile,
-            cluster,
-            task_arn,
-            username,
-            f"gosu {username} /opt/bin/start-bidnamic-os.sh",
-        )
+        exec_argv(profile, cluster, task_arn, username, as_user(username, "claude"))
     )
 
 
