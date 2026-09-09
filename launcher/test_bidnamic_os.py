@@ -42,96 +42,77 @@ def test_claude_authed_reads_sentinel():
         assert b.claude_authed(*ARGS) is False
 
 
-ENV = {"cluster": "cluster-1"}
+ENV = {
+    "cluster": "cluster-1",
+    "subnets": ["subnet-a"],
+    "security_groups": ["sg-a"],
+}
 IDENTITY = ("rob@bidnamic.com", "rob-e")
+TAGS = [
+    {"key": "Service", "value": "bidnamic-os"},
+    {"key": "User", "value": "rob@bidnamic.com"},
+]
+
+
+def access_denied():
+    return b.ClientError({"Error": {"Code": "AccessDeniedException"}}, "DescribeServices")
 
 
 class FakeEcs:
-    """Records update_service calls; doubles as the boto3 session."""
+    """Records mutating calls; doubles as the boto3 session.
 
-    def __init__(self):
+    `services` is what describe_services returns; `denied` makes it raise
+    AccessDenied, which is what an SSO permission set predating the migration
+    does.
+    """
+
+    def __init__(self, services=None, denied=False, tasks=None):
+        self.services = services or []
+        self.denied = denied
+        self.tasks = tasks or []
         self.updates = []
+        self.run_tasks = []
+        self.stopped = []
 
     def client(self, _name):
         return self
 
+    def describe_services(self, **kwargs):
+        if self.denied:
+            raise access_denied()
+        return {"services": self.services}
+
     def update_service(self, **kwargs):
         self.updates.append(kwargs)
 
+    def run_task(self, **kwargs):
+        self.run_tasks.append(kwargs)
+        return {"tasks": [{"taskArn": "arn:from-run-task"}]}
 
-def test_ensure_service_running_scales_a_stopped_environment_up():
-    # Beta services are seeded at desired_count 0, so connecting has to scale.
-    ecs = FakeEcs()
-    with mock.patch.object(b, "find_running_task", return_value=None), mock.patch.object(
-        b, "wait_for_service_task", return_value=ARGS[2]
-    ):
-        assert b.ensure_service_running(ecs, ENV, *IDENTITY) == ARGS[2]
-    assert ecs.updates == [
-        {"cluster": "cluster-1", "service": "bidnamic-os-rob-e", "desiredCount": 1}
-    ]
+    def stop_task(self, **kwargs):
+        self.stopped.append(kwargs)
 
 
-def test_ensure_service_running_reuses_a_running_task():
-    ecs = FakeEcs()
-    task = {"taskArn": ARGS[2], "lastStatus": "RUNNING"}
-    with mock.patch.object(b, "find_running_task", return_value=task):
-        assert b.ensure_service_running(ecs, ENV, *IDENTITY) == ARGS[2]
-    assert ecs.updates == [], "must not scale a service that already has a task"
+ACTIVE_STOPPED = [{"status": "ACTIVE", "desiredCount": 0}]
+ACTIVE_RUNNING = [{"status": "ACTIVE", "desiredCount": 1}]
 
 
-def test_stop_scales_the_service_to_zero():
-    # Stopping the task alone is pointless — the service would replace it.
-    ecs = FakeEcs()
-    with mock.patch.object(b, "get_user_identity", return_value=IDENTITY):
-        b.cmd_stop(ecs, "profile", ENV)
-    assert ecs.updates == [
-        {"cluster": "cluster-1", "service": "bidnamic-os-rob-e", "desiredCount": 0}
-    ]
+def test_find_service_returns_none_when_not_permitted():
+    # A launcher released before the permission set is updated cannot describe
+    # services; that has to mean "fall back", not "crash".
+    assert b.find_service(FakeEcs(denied=True), "cluster-1", "rob-e") is None
 
 
-def test_auth_skips_login_when_already_authenticated():
-    with mock.patch.object(b, "get_user_identity", return_value=IDENTITY), mock.patch.object(
-        b, "ensure_service_running", return_value=ARGS[2]
-    ), mock.patch.object(b, "claude_authed", return_value=True), mock.patch.object(
-        b, "exec_with_keepalive"
-    ) as keepalive:
-        assert b.cmd_auth(mock.Mock(), "profile", ENV) == 0
-    assert not keepalive.called, "must not re-run the login flow when already logged in"
+def test_find_service_ignores_an_inactive_service():
+    ecs = FakeEcs(services=[{"status": "INACTIVE", "desiredCount": 1}])
+    assert b.find_service(ecs, "cluster-1", "rob-e") is None
 
 
-def test_auth_aborts_when_login_does_not_complete():
-    with mock.patch.object(b, "get_user_identity", return_value=IDENTITY), mock.patch.object(
-        b, "ensure_service_running", return_value=ARGS[2]
-    ), mock.patch.object(b, "claude_authed", return_value=False), mock.patch.object(
-        b, "exec_with_keepalive", return_value=0
-    ):
-        assert b.cmd_auth(mock.Mock(), "profile", ENV) == 1
+def test_find_running_task_prefers_the_service_owned_task():
+    orphan = {"taskArn": "arn:orphan", "startedBy": "rob", "tags": TAGS}
+    owned = {"taskArn": "arn:owned", "startedBy": "ecs-svc/123", "tags": TAGS}
 
-
-def test_auth_never_mounts_efs():
-    # Credentials are written to ~/.claude on the container's own EFS access
-    # point, so there is no local share to mount — and mounting would prompt
-    # for a sudo password for no reason.
-    with mock.patch.object(b, "get_user_identity", return_value=IDENTITY), mock.patch.object(
-        b, "ensure_service_running", return_value=ARGS[2]
-    ), mock.patch.object(b, "claude_authed", return_value=True), mock.patch.object(
-        b, "mount_efs"
-    ) as mount:
-        b.cmd_auth(mock.Mock(), "profile", ENV)
-    assert not mount.called
-
-
-def test_find_running_task_ignores_pre_service_orphans():
-    # A task from the old run_task path carries identical tags but runs no
-    # remote control, so exec'ing into it would silently do the wrong thing.
-    tags = [{"key": "Service", "value": "bidnamic-os"}, {"key": "User", "value": "rob@bidnamic.com"}]
-    orphan = {"taskArn": "arn:orphan", "startedBy": "rob", "tags": tags}
-    owned = {"taskArn": "arn:owned", "startedBy": "ecs-svc/123", "tags": tags}
-
-    class Ecs:
-        def __init__(self, tasks):
-            self.tasks = tasks
-
+    class Ecs(FakeEcs):
         def get_paginator(self, _):
             outer = self
 
@@ -144,9 +125,143 @@ def test_find_running_task_ignores_pre_service_orphans():
         def describe_tasks(self, **kw):
             return {"tasks": self.tasks}
 
-    assert b.find_running_task(Ecs([orphan]), "c", "rob@bidnamic.com") is None
-    found = b.find_running_task(Ecs([orphan, owned]), "c", "rob@bidnamic.com")
+    found = b.find_running_task(Ecs(tasks=[orphan, owned]), "c", "rob@bidnamic.com")
     assert found["taskArn"] == "arn:owned"
+
+
+def test_find_running_task_falls_back_to_a_standalone_task():
+    # Mid-migration this may be the user's only environment; connecting to it
+    # beats starting a second one.
+    orphan = {"taskArn": "arn:orphan", "startedBy": "rob", "tags": TAGS}
+
+    class Ecs(FakeEcs):
+        def get_paginator(self, _):
+            class P:
+                def paginate(self, **kw):
+                    return [{"taskArns": ["arn:orphan"]}]
+
+            return P()
+
+        def describe_tasks(self, **kw):
+            return {"tasks": [orphan]}
+
+    found = b.find_running_task(Ecs(), "c", "rob@bidnamic.com")
+    assert found["taskArn"] == "arn:orphan"
+
+
+def test_ensure_environment_scales_a_stopped_service_up():
+    ecs = FakeEcs(services=ACTIVE_STOPPED)
+    with mock.patch.object(b, "find_running_task", return_value=None), mock.patch.object(
+        b, "wait_for_service_task", return_value=ARGS[2]
+    ):
+        assert b.ensure_environment_running(ecs, ENV, *IDENTITY) == ARGS[2]
+    assert ecs.updates == [
+        {"cluster": "cluster-1", "service": "bidnamic-os-rob-e", "desiredCount": 1}
+    ]
+    assert ecs.run_tasks == [], "must not fall back when a service exists"
+
+
+def test_ensure_environment_does_not_rescale_a_service_already_at_one():
+    ecs = FakeEcs(services=ACTIVE_RUNNING)
+    with mock.patch.object(b, "find_running_task", return_value=None), mock.patch.object(
+        b, "wait_for_service_task", return_value=ARGS[2]
+    ):
+        b.ensure_environment_running(ecs, ENV, *IDENTITY)
+    assert ecs.updates == []
+
+
+def test_ensure_environment_reuses_a_running_task():
+    ecs = FakeEcs(services=ACTIVE_RUNNING)
+    task = {"taskArn": ARGS[2], "lastStatus": "RUNNING"}
+    with mock.patch.object(b, "find_running_task", return_value=task):
+        assert b.ensure_environment_running(ecs, ENV, *IDENTITY) == ARGS[2]
+    assert ecs.updates == [] and ecs.run_tasks == []
+
+
+def test_ensure_environment_falls_back_to_run_task_with_no_service():
+    # The pre-migration stack: this launcher ships before the services exist.
+    ecs = FakeEcs(services=[])
+    with mock.patch.object(b, "find_running_task", return_value=None), mock.patch.object(
+        b, "wait_for_task"
+    ):
+        assert b.ensure_environment_running(ecs, ENV, *IDENTITY) == "arn:from-run-task"
+    assert len(ecs.run_tasks) == 1
+    assert ecs.run_tasks[0]["taskDefinition"] == "bidnamic-os-rob-e"
+    assert ecs.updates == []
+
+
+def test_ensure_environment_falls_back_when_describe_is_denied():
+    ecs = FakeEcs(denied=True)
+    with mock.patch.object(b, "find_running_task", return_value=None), mock.patch.object(
+        b, "wait_for_task"
+    ):
+        assert b.ensure_environment_running(ecs, ENV, *IDENTITY) == "arn:from-run-task"
+    assert len(ecs.run_tasks) == 1
+
+
+def test_stop_scales_the_service_to_zero():
+    # Stopping the task alone is pointless — the service would replace it.
+    ecs = FakeEcs(services=ACTIVE_RUNNING)
+    with mock.patch.object(b, "get_user_identity", return_value=IDENTITY):
+        b.cmd_stop(ecs, "profile", ENV)
+    assert ecs.updates == [
+        {"cluster": "cluster-1", "service": "bidnamic-os-rob-e", "desiredCount": 0}
+    ]
+    assert ecs.stopped == []
+
+
+def test_stop_stops_the_task_when_there_is_no_service():
+    ecs = FakeEcs(services=[])
+    task = {"taskArn": ARGS[2], "lastStatus": "RUNNING"}
+    with mock.patch.object(b, "get_user_identity", return_value=IDENTITY), mock.patch.object(
+        b, "find_running_task", return_value=task
+    ):
+        b.cmd_stop(ecs, "profile", ENV)
+    assert ecs.stopped and ecs.stopped[0]["task"] == ARGS[2]
+    assert ecs.updates == []
+
+
+def test_auth_skips_login_when_already_authenticated():
+    with mock.patch.object(b, "get_user_identity", return_value=IDENTITY), mock.patch.object(
+        b, "ensure_environment_running", return_value=ARGS[2]
+    ), mock.patch.object(b, "claude_authed", return_value=True), mock.patch.object(
+        b, "remote_control_running", return_value=True
+    ), mock.patch.object(b, "exec_with_keepalive") as keepalive:
+        assert b.cmd_auth(mock.Mock(), "profile", ENV) == 0
+    assert not keepalive.called, "must not re-run the login flow when already logged in"
+
+
+def test_auth_aborts_when_login_does_not_complete():
+    with mock.patch.object(b, "get_user_identity", return_value=IDENTITY), mock.patch.object(
+        b, "ensure_environment_running", return_value=ARGS[2]
+    ), mock.patch.object(b, "claude_authed", return_value=False), mock.patch.object(
+        b, "exec_with_keepalive", return_value=0
+    ):
+        assert b.cmd_auth(mock.Mock(), "profile", ENV) == 1
+
+
+def test_auth_reports_when_remote_control_is_not_up_yet():
+    # Mid-migration the task definition still runs `sleep infinity`, so no
+    # supervisor picks the login up. Saying otherwise would be a lie.
+    with mock.patch.object(b, "get_user_identity", return_value=IDENTITY), mock.patch.object(
+        b, "ensure_environment_running", return_value=ARGS[2]
+    ), mock.patch.object(b, "claude_authed", return_value=True), mock.patch.object(
+        b, "remote_control_running", return_value=False
+    ):
+        assert b.cmd_auth(mock.Mock(), "profile", ENV) == 0
+
+
+def test_auth_never_mounts_efs():
+    # Credentials are written to ~/.claude on the container's own EFS access
+    # point, so there is no local share to mount — and mounting would prompt
+    # for a sudo password for no reason.
+    with mock.patch.object(b, "get_user_identity", return_value=IDENTITY), mock.patch.object(
+        b, "ensure_environment_running", return_value=ARGS[2]
+    ), mock.patch.object(b, "claude_authed", return_value=True), mock.patch.object(
+        b, "remote_control_running", return_value=True
+    ), mock.patch.object(b, "mount_efs") as mount:
+        b.cmd_auth(mock.Mock(), "profile", ENV)
+    assert not mount.called
 
 
 if __name__ == "__main__":

@@ -32,6 +32,28 @@ try:
 except ImportError:
     boto3 = None
 
+    # Stand-ins so the `except` clauses below remain valid without botocore
+    # installed. Nothing can reach them at run time — preflight_checks exits
+    # when boto3 is missing — but an undefined name in an except clause would
+    # turn a clear "reinstall bidnamic-os" message into a NameError, and it
+    # makes these paths testable without the dependency.
+    class ClientError(Exception):
+        def __init__(self, error_response, operation_name):
+            super().__init__(operation_name)
+            self.response = error_response
+
+    class NoCredentialsError(Exception):
+        pass
+
+    class SSOTokenLoadError(Exception):
+        pass
+
+    class TokenRetrievalError(Exception):
+        pass
+
+    class UnauthorizedSSOTokenError(Exception):
+        pass
+
 # Rewritten by the Homebrew formula at install time (see
 # Formula/bidnamic-os.rb in homebrew-tap). Source-tree invocations report
 # "dev". `bidnamic-os version` prints this.
@@ -78,11 +100,17 @@ ENVIRONMENTS = {
     "beta": {
         "account_id": "715191048898",
         "cluster": "default-KF7fFm2UPZc",
+        # Only used by the run_task fallback (see ensure_environment_running);
+        # a service takes its network placement from Terraform.
+        "subnets": ["subnet-0a0099012d66f4e80", "subnet-08e495740630eaf28"],
+        "security_groups": ["sg-0564e16cccc860e3c"],
         "sso_role_name": "BidnamicOSAccess-Beta",
     },
     "live": {
         "account_id": "666005677731",
         "cluster": "default-USrp2B1uSJE",
+        "subnets": ["subnet-0b900e463e20f90d5", "subnet-07a8f2844e05df3a4"],
+        "security_groups": ["sg-06fb97bae07636229"],
         "sso_role_name": "BidnamicOSAccess-Live",
     },
 }
@@ -125,6 +153,10 @@ def get_env_config(env_name):
         missing.append(f"ENVIRONMENTS['{env_name}']['account_id']")
     if not env["cluster"]:
         missing.append(f"ENVIRONMENTS['{env_name}']['cluster']")
+    if not env["subnets"]:
+        missing.append(f"ENVIRONMENTS['{env_name}']['subnets']")
+    if not env["security_groups"]:
+        missing.append(f"ENVIRONMENTS['{env_name}']['security_groups']")
     if missing:
         error(f"Required config not set: {', '.join(missing)}. Edit this script to configure.")
         sys.exit(1)
@@ -209,6 +241,8 @@ def find_running_task(ecs, cluster, email):
     if not task_arns:
         return None
 
+    standalone = None
+
     # Describe in batches of 100 (API limit)
     for batch in batched(task_arns, 100):
         response = ecs.describe_tasks(cluster=cluster, tasks=list(batch), include=["TAGS"])
@@ -216,21 +250,87 @@ def find_running_task(ecs, cluster, email):
             tags = task.get("tags", [])
             service = get_tag(tags, "Service")
             user = get_tag(tags, "User")
-            # Only the service's own task counts. A task left over from the
-            # pre-service run_task era carries the same Service/User tags, so
-            # without this the launcher would exec into an orphan that has no
-            # remote control running in it.
-            if not task.get("startedBy", "").startswith("ecs-svc/"):
+            if not (service == SERVICE_TAG and user and user.lower() == email.lower()):
                 continue
-            if service == SERVICE_TAG and user and user.lower() == email.lower():
+            # A service-owned task is the one to use: it runs the remote
+            # control supervisor. Return the moment one is found.
+            if task.get("startedBy", "").startswith("ecs-svc/"):
                 return task
+            # Otherwise remember a standalone task from the run_task path.
+            # During the migration that may be the only environment the user
+            # has, and connecting to it beats starting a second one.
+            standalone = standalone or task
 
-    return None
+    return standalone
 
 
 def service_name_for(username):
     """ECS service name for a user — matches aws_ecs_service.bidnamic_os in Terraform."""
     return f"{SERVICE_TAG}-{username}"
+
+
+def find_service(ecs, cluster, username):
+    """Return the user's ACTIVE ECS service, or None to mean "use run_task".
+
+    None covers every reason a service might not be usable, and they all lead
+    to the same fallback: it has not been deployed yet, it exists but is
+    draining or INACTIVE, or the caller's SSO permission set predates the
+    migration and cannot describe services at all. That last case is why
+    AccessDenied is swallowed rather than raised — a launcher released ahead of
+    the infrastructure change has to keep working against the old permission
+    set.
+    """
+    try:
+        response = ecs.describe_services(
+            cluster=cluster, services=[service_name_for(username)]
+        )
+    except ClientError as e:
+        if e.response["Error"]["Code"] in ("AccessDeniedException", "AccessDenied"):
+            return None
+        raise
+
+    for service in response.get("services", []):
+        if service.get("status") == "ACTIVE":
+            return service
+    return None
+
+
+def start_task(ecs, env, email, username):
+    """Start a standalone task with run_task. Returns its ARN.
+
+    The pre-service way to start an environment, kept so this launcher works
+    before the services are deployed. Once the permission set drops
+    ecs:RunTask this fails with AccessDenied, which is the intended end state:
+    by then every environment is a service, and a standalone task would be
+    owned by nothing and never stopped.
+    """
+    info("Starting your environment...")
+    response = ecs.run_task(
+        cluster=env["cluster"],
+        taskDefinition=f"{SERVICE_TAG}-{username}",
+        launchType="FARGATE",
+        enableExecuteCommand=True,
+        networkConfiguration={
+            "awsvpcConfiguration": {
+                "subnets": env["subnets"],
+                "securityGroups": env["security_groups"],
+                "assignPublicIp": "DISABLED",
+            }
+        },
+        tags=[
+            {"key": "User", "value": email},
+            {"key": "Service", "value": SERVICE_TAG},
+            {"key": "EcsExec", "value": "true"},
+        ],
+    )
+
+    tasks = response.get("tasks", [])
+    if not tasks:
+        reasons = [f.get("reason", "unknown") for f in response.get("failures", [])]
+        error(f"Failed to start environment: {', '.join(reasons)}")
+        sys.exit(1)
+
+    return tasks[0]["taskArn"]
 
 
 def scale_service(ecs, cluster, username, desired_count):
@@ -495,6 +595,34 @@ def claude_authed(profile, cluster, task_arn, username):
         stdin=subprocess.DEVNULL,
     )
     return CLAUDE_AUTH_SENTINEL in (result.stdout or "")
+
+
+# Bracketed so the pattern cannot match the `bash -lc` wrapper, whose command
+# line contains this very command.
+REMOTE_CONTROL_RUNNING_SENTINEL = "__BIDNAMIC_REMOTE_CONTROL_RUNNING__"
+REMOTE_CONTROL_CHECK = (
+    "pgrep -f 'claude remote[-]control' >/dev/null && "
+    f"echo {REMOTE_CONTROL_RUNNING_SENTINEL}"
+)
+
+
+def remote_control_running(profile, cluster, task_arn, username):
+    """True if the container's supervisor already has remote control up.
+
+    Worth checking rather than assuming: until the task definition points at
+    the supervisor, a task still runs the old `sleep infinity` command and no
+    login will start anything. Reporting that honestly beats telling the user
+    to expect remote control that is never coming.
+    """
+    result = subprocess.run(
+        exec_argv(
+            profile, cluster, task_arn, username, as_user(username, REMOTE_CONTROL_CHECK)
+        ),
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
+    )
+    return REMOTE_CONTROL_RUNNING_SENTINEL in (result.stdout or "")
 
 
 def efs_utils_installed():
@@ -1116,13 +1244,15 @@ def _unmount_path(path):
             error(f"Forced unmount of {path} failed (exit {force_result.returncode})")
 
 
-def ensure_service_running(session, env, email, username):
-    """Return the ARN of the user's running task, scaling the service up if needed.
+def ensure_environment_running(session, env, email, username):
+    """Return the ARN of the user's running task, starting it if needed.
 
-    Each user has a long-lived ECS service (one task, or none). Terraform seeds
-    live services at desired_count 1 so remote control is always on, and beta
-    at 0 so environments start stopped — so a beta environment, or one the user
-    stopped, has to be scaled up before there is a task to exec into.
+    Prefers the user's ECS service: each user has a long-lived service holding
+    one task or none (Terraform seeds live at 1 so remote control is always on,
+    beta at 0 so environments start stopped), and scaling it to one is how an
+    environment starts. Where no service is visible it falls back to run_task,
+    so this launcher works both before and after the services are deployed and
+    switches over on its own when they appear.
     """
     ecs = session.client("ecs")
     cluster = env["cluster"]
@@ -1136,9 +1266,20 @@ def ensure_service_running(session, env, email, username):
         wait_for_task(ecs, cluster, task["taskArn"])
         return task["taskArn"]
 
-    info("Starting your environment...")
-    scale_service(ecs, cluster, username, 1)
-    return wait_for_service_task(ecs, cluster, email)
+    service = find_service(ecs, cluster, username)
+    if service:
+        info("Starting your environment...")
+        if service.get("desiredCount", 0) < 1:
+            scale_service(ecs, cluster, username, 1)
+        return wait_for_service_task(ecs, cluster, email)
+
+    # Says so out loud: on this path there is no supervisor, so remote control
+    # will not be running, and it should be obvious why rather than puzzling.
+    info("No environment service yet — starting a standalone task.")
+    info("Upgrade when you can: `bidnamic-os upgrade`.")
+    task_arn = start_task(ecs, env, email, username)
+    wait_for_task(ecs, cluster, task_arn)
+    return task_arn
 
 
 def cmd_connect(session, profile, env):
@@ -1150,7 +1291,7 @@ def cmd_connect(session, profile, env):
     if platform.system() == "Darwin":
         mount_efs(session, email, profile)
 
-    task_arn = ensure_service_running(session, env, email, username)
+    task_arn = ensure_environment_running(session, env, email, username)
     return connect_to_task(profile, env["cluster"], task_arn, username)
 
 
@@ -1167,24 +1308,31 @@ def cmd_auth(session, profile, env):
     """
     email, username = get_user_identity(session)
     info(f"Hello, {username}.")
-    task_arn = ensure_service_running(session, env, email, username)
+    task_arn = ensure_environment_running(session, env, email, username)
     cluster = env["cluster"]
 
     info("Checking Claude Code login...")
-    if claude_authed(profile, cluster, task_arn, username):
-        info("Already logged in — remote control is running.")
-        return 0
-
-    info("Not logged in. Starting `claude auth login` — follow the prompts.")
-    exec_with_keepalive(
-        exec_argv(profile, cluster, task_arn, username, as_user(username, "claude auth login"))
-    )
-
     if not claude_authed(profile, cluster, task_arn, username):
-        error("Claude Code login did not complete. Re-run `bidnamic-os auth`.")
-        return 1
+        info("Not logged in. Starting `claude auth login` — follow the prompts.")
+        exec_with_keepalive(
+            exec_argv(
+                profile, cluster, task_arn, username, as_user(username, "claude auth login")
+            )
+        )
+        if not claude_authed(profile, cluster, task_arn, username):
+            error("Claude Code login did not complete. Re-run `bidnamic-os auth`.")
+            return 1
+        info("Logged in.")
+    else:
+        info("Already logged in.")
 
-    info("Logged in. Remote control starts within a minute.")
+    if remote_control_running(profile, cluster, task_arn, username):
+        info("Remote control is running — connect from claude.ai/code or the Claude app.")
+    else:
+        info(
+            "Remote control is not running yet. It starts within a minute once your "
+            "environment is on the new image; your login is saved either way."
+        )
     return 0
 
 
@@ -1198,10 +1346,22 @@ def cmd_stop(session, profile, env):
     """
     email, username = get_user_identity(session)
     ecs = session.client("ecs")
+    cluster = env["cluster"]
 
+    if find_service(ecs, cluster, username):
+        info("Stopping your environment...")
+        scale_service(ecs, cluster, username, 0)
+        info("Environment stopped. Remote control is offline until you reconnect.")
+        return
+
+    # No service yet: stop the standalone task, as before.
+    task = find_running_task(ecs, cluster, email)
+    if not task:
+        info("No running environment found.")
+        return
     info("Stopping your environment...")
-    scale_service(ecs, env["cluster"], username, 0)
-    info("Environment stopped. Remote control is offline until you reconnect.")
+    ecs.stop_task(cluster=cluster, task=task["taskArn"], reason="User requested stop")
+    info("Environment stopped.")
 
 
 def cmd_unmount(session, profile, env):
