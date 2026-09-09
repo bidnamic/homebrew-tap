@@ -550,7 +550,7 @@ def as_user(username, script):
     Login shell (`-l`) so the image's profile — PATH to the claude CLI
     included — is applied, matching what an interactive session gets.
     """
-    return f"gosu {username} bash -lc {shlex.quote(script)}"
+    return f"gosu {shlex.quote(username)} bash -lc {shlex.quote(script)}"
 
 
 def connect_to_task(profile, cluster, task_arn, username):
@@ -1247,8 +1247,15 @@ def ensure_environment_running(session, env, email, username):
     ecs = session.client("ecs")
     cluster = env["cluster"]
 
+    service = find_service(ecs, cluster, username)
     task = find_running_task(ecs, cluster, email)
+
     if task:
+        if service and not task.get("startedBy", "").startswith("ecs-svc/"):
+            # Usable, but nothing supervises it, so remote control is not
+            # running. Better to say so than leave the user wondering.
+            info("This is a leftover task, not your service, so remote control is off.")
+            info("Run `bidnamic-os stop` and reconnect to move onto the service.")
         if task["lastStatus"] == "RUNNING":
             info("Found your running environment.")
             return task["taskArn"]
@@ -1256,7 +1263,6 @@ def ensure_environment_running(session, env, email, username):
         wait_for_task(ecs, cluster, task["taskArn"])
         return task["taskArn"]
 
-    service = find_service(ecs, cluster, username)
     if service:
         info("Starting your environment...")
         if service.get("desiredCount", 0) < 1:
@@ -1301,11 +1307,14 @@ def cmd_auth(session, profile, env):
     info("Checking Claude Code login...")
     if not claude_authed(profile, cluster, task_arn, username):
         info("Not logged in. Starting `claude auth login` — follow the prompts.")
-        exec_with_keepalive(
+        code = exec_with_keepalive(
             exec_argv(
                 profile, cluster, task_arn, username, as_user(username, "claude auth login")
             )
         )
+        if code != 0:
+            error(f"The login session ended early (exit {code}). Re-run `bidnamic-os auth`.")
+            return 1
         if not claude_authed(profile, cluster, task_arn, username):
             error("Claude Code login did not complete. Re-run `bidnamic-os auth`.")
             return 1
@@ -1333,20 +1342,21 @@ def cmd_stop(session, profile, env):
     ecs = session.client("ecs")
     cluster = env["cluster"]
 
-    if find_service(ecs, cluster, username):
-        info("Stopping your environment...")
-        scale_service(ecs, cluster, username, 0)
-        info("Environment stopped. Remote control is offline until you reconnect.")
-        return
-
-    # No service yet: stop the standalone task, as before.
+    service = find_service(ecs, cluster, username)
     task = find_running_task(ecs, cluster, email)
-    if not task:
+    standalone = task is not None and not task.get("startedBy", "").startswith("ecs-svc/")
+
+    if service is None and not standalone:
         info("No running environment found.")
         return
+
     info("Stopping your environment...")
-    ecs.stop_task(cluster=cluster, task=task["taskArn"], reason="User requested stop")
-    info("Environment stopped.")
+    if service is not None:
+        scale_service(ecs, cluster, username, 0)
+    if standalone:
+        # Owned by no service, so scaling to zero would leave it running.
+        ecs.stop_task(cluster=cluster, task=task["taskArn"], reason="User requested stop")
+    info("Environment stopped. Remote control is off until you reconnect.")
 
 
 def cmd_unmount(session, profile, env):
