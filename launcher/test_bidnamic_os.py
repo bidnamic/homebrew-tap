@@ -276,9 +276,7 @@ def test_stop_stops_the_task_when_there_is_no_service():
 def test_auth_skips_login_when_already_authenticated():
     with mock.patch.object(b, "get_user_identity", return_value=IDENTITY), mock.patch.object(
         b, "ensure_environment_running", return_value=ARGS[2]
-    ), mock.patch.object(b, "claude_authed", return_value=True), mock.patch.object(
-        b, "remote_control_running", return_value=True
-    ), mock.patch.object(b, "exec_with_keepalive") as keepalive:
+    ), mock.patch.object(b, "claude_authed", return_value=True), mock.patch.object(b, "exec_with_keepalive") as keepalive:
         assert b.cmd_auth(mock.Mock(), "profile", ENV) == 0
     assert not keepalive.called, "must not re-run the login flow when already logged in"
 
@@ -292,26 +290,13 @@ def test_auth_aborts_when_login_does_not_complete():
         assert b.cmd_auth(mock.Mock(), "profile", ENV) == 1
 
 
-def test_auth_reports_when_remote_control_is_not_up_yet():
-    # Mid-migration the task definition still runs `sleep infinity`, so no
-    # supervisor picks the login up. Saying otherwise would be a lie.
-    with mock.patch.object(b, "get_user_identity", return_value=IDENTITY), mock.patch.object(
-        b, "ensure_environment_running", return_value=ARGS[2]
-    ), mock.patch.object(b, "claude_authed", return_value=True), mock.patch.object(
-        b, "remote_control_running", return_value=False
-    ):
-        assert b.cmd_auth(mock.Mock(), "profile", ENV) == 0
-
-
 def test_auth_never_mounts_efs():
     # Credentials are written to ~/.claude on the container's own EFS access
     # point, so there is no local share to mount — and mounting would prompt
     # for a sudo password for no reason.
     with mock.patch.object(b, "get_user_identity", return_value=IDENTITY), mock.patch.object(
         b, "ensure_environment_running", return_value=ARGS[2]
-    ), mock.patch.object(b, "claude_authed", return_value=True), mock.patch.object(
-        b, "remote_control_running", return_value=True
-    ), mock.patch.object(b, "mount_efs") as mount:
+    ), mock.patch.object(b, "claude_authed", return_value=True), mock.patch.object(b, "mount_efs") as mount:
         b.cmd_auth(mock.Mock(), "profile", ENV)
     assert not mount.called
 
