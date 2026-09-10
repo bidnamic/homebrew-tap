@@ -2,7 +2,7 @@ name: release
 
 # Cuts a new release of the bidnamic-os launcher on every push to main
 # that touches launcher/**. The release tag is calendar-versioned
-# (vYYYY.MM.DD-shortsha). After tagging, the workflow opens a PR with
+# (vYYYY.MM.DD.HHMMSS, UTC). After tagging, the workflow opens a PR with
 # the formula's url/sha256/version updated to match the new release,
 # and enables auto-merge so the PR lands without human action.
 #
@@ -37,7 +37,11 @@ jobs:
         id: tag
         run: |
           set -euo pipefail
-          TAG="v$(date -u +%Y.%m.%d)-$(git rev-parse --short HEAD)"
+          # Timestamp, not a short SHA: Homebrew compares versions token by
+          # token, so two releases on one day were ordered by their SHAs —
+          # `brew upgrade` saw f8f8347 as newer than df49c06 and did nothing.
+          # Seconds keep it monotonic even for two releases in a minute.
+          TAG="v$(date -u +%Y.%m.%d.%H%M%S)"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
 
       - name: Tag and push
