@@ -362,12 +362,17 @@ def scale_service(ecs, cluster, username, desired_count):
 
 
 def wait_for_service_task(ecs, cluster, email, max_wait=180):
-    """Wait for the service to place a task, then for that task to be exec-ready."""
+    """Wait for the service to place a task, then for that task to be exec-ready.
+
+    Only a service-owned task counts: find_running_task falls back to a
+    standalone one, and returning that would skip the placement we are here
+    to wait for.
+    """
     info("Waiting for environment to be ready...")
     waited = 0
     while waited < max_wait:
         task = find_running_task(ecs, cluster, email)
-        if task:
+        if task and service_owned(task):
             # list_tasks(desiredStatus=RUNNING) surfaces the task while it is
             # still PENDING, so hand off to the readiness wait rather than
             # assuming it can be exec'd into yet.
