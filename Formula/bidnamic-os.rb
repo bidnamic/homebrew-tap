@@ -3,9 +3,9 @@ class BidnamicOs < Formula
   homepage "https://github.com/bidnamic/homebrew-tap"
   # url/sha256/version are rewritten by .github/workflows/release.yml on
   # every push to main that touches launcher/**.
-  url "https://github.com/bidnamic/homebrew-tap/archive/refs/tags/v2026.06.08-9219995.tar.gz"
-  sha256 "ff6f7f1ac4e839503f455197266737de92ff0df17eb49dc59637f0711f4a2573"
-  version "2026.06.08-9219995"
+  url "https://github.com/bidnamic/homebrew-tap/archive/refs/tags/v2026.09.10-f8f8347.tar.gz"
+  sha256 "674fbd2dbaeb8700761238a2f98321630ce124baeb4434c3b05936faa7c2d537"
+  version "2026.09.10-f8f8347"
 
   depends_on "python@3.14"
   depends_on "awscli"
