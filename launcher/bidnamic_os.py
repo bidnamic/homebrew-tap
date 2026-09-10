@@ -1311,11 +1311,17 @@ def cmd_auth(session, profile, env):
         info("Already logged in.")
     else:
         info("Starting `claude auth login` — follow the prompts.")
-        code = exec_with_keepalive(
-            exec_argv(
-                profile, cluster, task_arn, username, as_user(username, "claude auth login")
-            )
-        )
+        # Straight through to the real terminal, no pty relay: a login is over
+        # in a minute, so there is no idle timeout to keep alive, and pasting
+        # the OAuth code wants the fewest layers between keyboard and remote.
+        try:
+            code = subprocess.run(
+                exec_argv(
+                    profile, cluster, task_arn, username, as_user(username, "claude auth login")
+                )
+            ).returncode
+        except KeyboardInterrupt:
+            return 130
         if code != 0:
             error(f"The login session ended early (exit {code}). Try again.")
             return 1
