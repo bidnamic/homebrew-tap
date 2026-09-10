@@ -304,6 +304,17 @@ def test_auth_aborts_when_login_does_not_complete():
         assert b.cmd_auth(mock.Mock(), "profile", ENV) == 1
 
 
+def test_wait_for_service_task_ignores_a_standalone_task():
+    # find_running_task falls back to a standalone task; returning that here
+    # would skip the service placement this function exists to wait for.
+    standalone = {"taskArn": "arn:orphan", "startedBy": "rob"}
+    owned = {"taskArn": ARGS[2], "startedBy": "ecs-svc/1"}
+    with mock.patch.object(
+        b, "find_running_task", side_effect=[standalone, standalone, owned]
+    ), mock.patch.object(b, "wait_for_task"), mock.patch("time.sleep"):
+        assert b.wait_for_service_task(FakeEcs(), "cluster-1", IDENTITY[0]) == ARGS[2]
+
+
 def test_auth_never_mounts_efs():
     # Credentials are written to ~/.claude on the container's own EFS access
     # point, so there is no local share to mount — and mounting would prompt
