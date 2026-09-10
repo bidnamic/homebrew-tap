@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Self-check: run `python3 launcher/test_bidnamic_os.py`."""
 
+import os
 import subprocess
 import sys
 from unittest import mock
@@ -40,6 +41,20 @@ def test_claude_authed_reads_sentinel():
 
     with mock.patch("subprocess.run", run_unauthed):
         assert b.claude_authed(*ARGS) is False
+
+
+def test_claude_authed_gives_the_session_a_tty():
+    # DEVNULL stdin kills session-manager-plugin with "Cannot perform start
+    # session: EOF" before the command runs, so the check must never see one.
+    seen = {}
+
+    def run(argv, **kw):
+        seen["tty"] = os.isatty(kw["stdin"])  # fd is closed by the time we assert
+        return subprocess.CompletedProcess(argv, 0, stdout=b.CLAUDE_AUTH_SENTINEL, stderr="")
+
+    with mock.patch("subprocess.run", run):
+        assert b.claude_authed(*ARGS) is True
+    assert seen["tty"]
 
 
 ENV = {
