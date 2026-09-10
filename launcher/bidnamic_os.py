@@ -592,19 +592,34 @@ CLAUDE_AUTH_SENTINEL = "__BIDNAMIC_CLAUDE_AUTHED__"
 
 
 def claude_authed(profile, cluster, task_arn, username):
-    """Whether Claude Code is already logged in inside the container."""
-    result = subprocess.run(
-        exec_argv(
-            profile,
-            cluster,
-            task_arn,
-            username,
-            as_user(username, f"claude auth status && echo {CLAUDE_AUTH_SENTINEL}"),
-        ),
-        capture_output=True,
-        text=True,
-        stdin=subprocess.DEVNULL,
-    )
+    """Whether Claude Code is already logged in inside the container.
+
+    stdin is a pty, not DEVNULL: session-manager-plugin reads stdin even for a
+    one-shot command, and an immediate EOF kills the session before the command
+    runs ("Cannot perform start session: EOF") while still exiting 0 — which
+    reads as "not logged in" every time, including right after a successful
+    login. A pty never signals EOF while we hold the master open.
+    """
+    master, slave = pty.openpty()
+    try:
+        result = subprocess.run(
+            exec_argv(
+                profile,
+                cluster,
+                task_arn,
+                username,
+                as_user(username, f"claude auth status && echo {CLAUDE_AUTH_SENTINEL}"),
+            ),
+            capture_output=True,
+            text=True,
+            stdin=slave,
+            timeout=60,
+        )
+    except subprocess.TimeoutExpired:
+        return False
+    finally:
+        os.close(slave)
+        os.close(master)
     return CLAUDE_AUTH_SENTINEL in (result.stdout or "")
 
 
