@@ -285,7 +285,7 @@ def test_auth_reports_a_failed_exec_session_distinctly():
     with mock.patch.object(b, "get_user_identity", return_value=IDENTITY), mock.patch.object(
         b, "ensure_environment_running", return_value=ARGS[2]
     ), mock.patch.object(b, "claude_authed", authed), mock.patch.object(
-        b, "exec_with_keepalive", return_value=255
+        subprocess, "run", return_value=subprocess.CompletedProcess([], 255)
     ):
         assert b.cmd_auth(mock.Mock(), "profile", ENV) == 1
     assert authed.call_count == 1, "must not re-check auth after a failed session"
@@ -305,16 +305,18 @@ def test_stop_stops_the_task_when_there_is_no_service():
 def test_auth_skips_login_when_already_authenticated():
     with mock.patch.object(b, "get_user_identity", return_value=IDENTITY), mock.patch.object(
         b, "ensure_environment_running", return_value=ARGS[2]
-    ), mock.patch.object(b, "claude_authed", return_value=True), mock.patch.object(b, "exec_with_keepalive") as keepalive:
+    ), mock.patch.object(b, "claude_authed", return_value=True), mock.patch.object(
+        subprocess, "run"
+    ) as run:
         assert b.cmd_auth(mock.Mock(), "profile", ENV) == 0
-    assert not keepalive.called, "must not re-run the login flow when already logged in"
+    assert not run.called, "must not re-run the login flow when already logged in"
 
 
 def test_auth_aborts_when_login_does_not_complete():
     with mock.patch.object(b, "get_user_identity", return_value=IDENTITY), mock.patch.object(
         b, "ensure_environment_running", return_value=ARGS[2]
     ), mock.patch.object(b, "claude_authed", return_value=False), mock.patch.object(
-        b, "exec_with_keepalive", return_value=0
+        subprocess, "run", return_value=subprocess.CompletedProcess([], 0)
     ):
         assert b.cmd_auth(mock.Mock(), "profile", ENV) == 1
 
