@@ -1325,10 +1325,13 @@ def cmd_auth(session, profile, env):
         if code != 0:
             error(f"The login session ended early (exit {code}). Try again.")
             return 1
+        # No "Logged in." on success — `claude auth login` has just said so
+        # itself. The check stays for the failure case: ECS Exec exits 0 even
+        # when the remote command failed, so this is the only thing standing
+        # between a 400 from the OAuth exchange and us claiming success.
         if not claude_authed(profile, cluster, task_arn, username):
             error("Login did not complete. Re-run `bidnamic-os auth`.")
             return 1
-        info("Logged in.")
 
     info("Remote control starts on its own; connect from claude.ai/code or the Claude app.")
     return 0
