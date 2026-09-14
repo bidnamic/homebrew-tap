@@ -25,6 +25,13 @@ permissions:
   contents: write
   pull-requests: write
 
+# One release at a time, so two runs can never resolve the same timestamp
+# (and never race each other's formula bump). Queued, not cancelled: every
+# push to launcher/** still gets its own release.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: ubuntu-24.04-arm
@@ -40,7 +47,8 @@ jobs:
           # Timestamp, not a short SHA: Homebrew compares versions token by
           # token, so two releases on one day were ordered by their SHAs —
           # `brew upgrade` saw f8f8347 as newer than df49c06 and did nothing.
-          # Seconds keep it monotonic even for two releases in a minute.
+          # Monotonic by construction; the concurrency group above keeps two
+          # runs from landing on the same second.
           TAG="v$(date -u +%Y.%m.%d.%H%M%S)"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
 
