@@ -161,7 +161,7 @@ def get_env_config(env_name):
         error(f"Required config not set: {', '.join(missing)}. Edit this script to configure.")
         sys.exit(1)
 
-    return env
+    return {**env, "name": env_name}
 
 
 def configure_profile(env_name, env):
@@ -1248,6 +1248,9 @@ def ensure_environment_running(session, env, email, username):
     Prefers the user's service, scaling it to one task. Where no service is
     visible it falls back to run_task, so this launcher works before and after
     the services are deployed and switches over on its own.
+
+    Only beta may scale a stopped service up; anywhere else that is an error
+    rather than something this launcher does on your behalf.
     """
     ecs = session.client("ecs")
     cluster = env["cluster"]
@@ -1268,8 +1271,11 @@ def ensure_environment_running(session, env, email, username):
         return task["taskArn"]
 
     if service:
-        info("Starting your environment...")
         if service.get("desiredCount", 0) < 1:
+            if env["name"] != "beta":
+                error("Your bidnamic-os service is stopped, please contact an administrator.")
+                sys.exit(1)
+            info("Starting your environment...")
             scale_service(ecs, cluster, username, 1)
         return wait_for_service_task(ecs, cluster, email)
 
@@ -1339,7 +1345,13 @@ def cmd_stop(session, profile, env):
 
     Stopping a service's task achieves nothing: it is replaced within seconds.
     Terraform ignores desired_count after create, so this survives an apply.
+
+    Beta only: elsewhere stopping is not ours to do yet.
     """
+    if env["name"] != "beta":
+        info("`stop` is beta-only for now. Nothing stopped.")
+        return
+
     email, username = get_user_identity(session)
     ecs = session.client("ecs")
     cluster = env["cluster"]
