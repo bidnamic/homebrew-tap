@@ -1311,6 +1311,7 @@ def cmd_auth(session, profile, env):
     task_arn = ensure_environment_running(session, env, email, username)
 
     info("Starting `claude auth login` — follow the prompts.")
+    info("Notice: when pasting the authentication code you won't see the output text.")
     # Straight through to the real terminal, no pty relay: a login is over
     # in a minute, so there is no idle timeout to keep alive, and pasting
     # the OAuth code wants the fewest layers between keyboard and remote.
