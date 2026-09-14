@@ -58,10 +58,12 @@ def test_claude_authed_gives_the_session_a_tty():
 
 
 ENV = {
+    "name": "beta",
     "cluster": "cluster-1",
     "subnets": ["subnet-a"],
     "security_groups": ["sg-a"],
 }
+LIVE_ENV = {**ENV, "name": "live"}
 IDENTITY = ("rob@bidnamic.com", "rob-e")
 TAGS = [
     {"key": "Service", "value": "bidnamic-os"},
@@ -224,6 +226,39 @@ def test_ensure_environment_falls_back_when_describe_is_denied():
     ):
         assert b.ensure_environment_running(ecs, ENV, *IDENTITY) == "arn:from-run-task"
     assert len(ecs.run_tasks) == 1
+
+
+def test_ensure_environment_refuses_to_scale_outside_beta():
+    # Scaling a stopped service up is beta-only; elsewhere it is an error,
+    # not a silent fallback to a second, unsupervised task.
+    ecs = FakeEcs(services=ACTIVE_STOPPED)
+    with mock.patch.object(b, "find_running_task", return_value=None), mock.patch.object(
+        b, "wait_for_task"
+    ):
+        try:
+            b.ensure_environment_running(ecs, LIVE_ENV, *IDENTITY)
+            assert False, "must not start an environment it may not scale"
+        except SystemExit as e:
+            assert e.code == 1
+    assert ecs.updates == [] and ecs.run_tasks == []
+
+
+def test_ensure_environment_still_falls_back_outside_beta_with_no_service():
+    ecs = FakeEcs(services=[])
+    with mock.patch.object(b, "find_running_task", return_value=None), mock.patch.object(
+        b, "wait_for_task"
+    ):
+        assert b.ensure_environment_running(ecs, LIVE_ENV, *IDENTITY) == "arn:from-run-task"
+
+
+def test_stop_outside_beta_does_nothing():
+    ecs = FakeEcs(services=ACTIVE_RUNNING)
+    task = {"taskArn": ARGS[2], "lastStatus": "RUNNING", "startedBy": "ecs-svc/1"}
+    with mock.patch.object(b, "get_user_identity", return_value=IDENTITY), mock.patch.object(
+        b, "find_running_task", return_value=task
+    ):
+        b.cmd_stop(ecs, "profile", LIVE_ENV)
+    assert ecs.updates == [] and ecs.stopped == []
 
 
 def test_stop_scales_the_service_to_zero():
