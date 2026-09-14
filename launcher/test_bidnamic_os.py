@@ -288,7 +288,7 @@ def test_auth_reports_a_failed_exec_session_distinctly():
         subprocess, "run", return_value=subprocess.CompletedProcess([], 255)
     ):
         assert b.cmd_auth(mock.Mock(), "profile", ENV) == 1
-    assert authed.call_count == 1, "must not re-check auth after a failed session"
+    assert authed.call_count == 0, "must not check auth after a failed session"
 
 
 def test_stop_stops_the_task_when_there_is_no_service():
@@ -302,14 +302,15 @@ def test_stop_stops_the_task_when_there_is_no_service():
     assert ecs.updates == []
 
 
-def test_auth_skips_login_when_already_authenticated():
+def test_auth_logs_in_again_when_already_authenticated():
+    # An existing session may be about to expire; re-logging in refreshes it.
     with mock.patch.object(b, "get_user_identity", return_value=IDENTITY), mock.patch.object(
         b, "ensure_environment_running", return_value=ARGS[2]
     ), mock.patch.object(b, "claude_authed", return_value=True), mock.patch.object(
-        subprocess, "run"
+        subprocess, "run", return_value=subprocess.CompletedProcess([], 0)
     ) as run:
         assert b.cmd_auth(mock.Mock(), "profile", ENV) == 0
-    assert not run.called, "must not re-run the login flow when already logged in"
+    assert run.called, "must run the login flow even when already logged in"
 
 
 def test_auth_aborts_when_login_does_not_complete():
@@ -338,7 +339,9 @@ def test_auth_never_mounts_efs():
     # for a sudo password for no reason.
     with mock.patch.object(b, "get_user_identity", return_value=IDENTITY), mock.patch.object(
         b, "ensure_environment_running", return_value=ARGS[2]
-    ), mock.patch.object(b, "claude_authed", return_value=True), mock.patch.object(b, "mount_efs") as mount:
+    ), mock.patch.object(b, "claude_authed", return_value=True), mock.patch.object(
+        subprocess, "run", return_value=subprocess.CompletedProcess([], 0)
+    ), mock.patch.object(b, "mount_efs") as mount:
         b.cmd_auth(mock.Mock(), "profile", ENV)
     assert not mount.called
 
