@@ -1297,6 +1297,9 @@ def cmd_connect(session, profile, env):
 def cmd_auth(session, profile, env):
     """Log Claude Code in inside the user's environment.
 
+    Always runs the login, even when a session already exists: the existing one
+    may be hours from expiry and re-logging in is the only way to refresh it.
+
     Skips the EFS mount: credentials go to ~/.claude on the container's own
     access point, so there is no local share to sync and no sudo password to
     ask for. The container's supervisor starts remote control once it sees the
@@ -1307,33 +1310,26 @@ def cmd_auth(session, profile, env):
     cluster = env["cluster"]
     task_arn = ensure_environment_running(session, env, email, username)
 
-    if claude_authed(profile, cluster, task_arn, username):
-        info("Already logged in.")
-    else:
-        info("Starting `claude auth login` — follow the prompts.")
-        # Straight through to the real terminal, no pty relay: a login is over
-        # in a minute, so there is no idle timeout to keep alive, and pasting
-        # the OAuth code wants the fewest layers between keyboard and remote.
-        try:
-            code = subprocess.run(
-                exec_argv(
-                    profile, cluster, task_arn, username, as_user(username, "claude auth login")
-                )
-            ).returncode
-        except KeyboardInterrupt:
-            return 130
-        if code != 0:
-            error(f"The login session ended early (exit {code}). Try again.")
-            return 1
-        # No "Logged in." on success — `claude auth login` has just said so
-        # itself. The check stays for the failure case: ECS Exec exits 0 even
-        # when the remote command failed, so this is the only thing standing
-        # between a 400 from the OAuth exchange and us claiming success.
-        if not claude_authed(profile, cluster, task_arn, username):
-            error("Login did not complete. Re-run `bidnamic-os auth`.")
-            return 1
-
-    info("Remote control starts on its own; connect from claude.ai/code or the Claude app.")
+    info("Starting `claude auth login` — follow the prompts.")
+    # Straight through to the real terminal, no pty relay: a login is over
+    # in a minute, so there is no idle timeout to keep alive, and pasting
+    # the OAuth code wants the fewest layers between keyboard and remote.
+    try:
+        code = subprocess.run(
+            exec_argv(profile, cluster, task_arn, username, as_user(username, "claude auth login"))
+        ).returncode
+    except KeyboardInterrupt:
+        return 130
+    if code != 0:
+        error(f"The login session ended early (exit {code}). Try again.")
+        return 1
+    # No "Logged in." on success — `claude auth login` has just said so
+    # itself. The check stays for the failure case: ECS Exec exits 0 even
+    # when the remote command failed, so this is the only thing standing
+    # between a 400 from the OAuth exchange and us claiming success.
+    if not claude_authed(profile, cluster, task_arn, username):
+        error("Login did not complete. Re-run `bidnamic-os auth`.")
+        return 1
     return 0
 
 
